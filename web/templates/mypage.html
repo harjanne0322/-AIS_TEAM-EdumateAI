@@ -2150,17 +2150,40 @@
                         return;
                     }
 
+                    const pendingCharts = [];
                     container.innerHTML = items.map(item => {
                         const badgeInfo = getSubjectBadgeInfo(item.subject);
                         const sourceBadge = item.source_type === "ai_log"
                             ? `<span class="px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">AI 출제 로그 저장</span>`
                             : `<span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">수동 등록</span>`;
+
+                        const meta = (typeof extractVisualMetaFromQuestionText === "function")
+                            ? extractVisualMetaFromQuestionText(item.question_text)
+                            : { cleanQuestion: item.question_text, synthVisual: null, dirFooter: "" };
+                        const cleanQuestion = meta.cleanQuestion || item.question_text || "";
+                        const effectiveDirFooter = item.direction_footer || meta.dirFooter || "";
+                        const effectiveVisualData = (item.visual_data && item.visual_data.type && item.visual_data.type !== "none")
+                            ? item.visual_data
+                            : meta.synthVisual;
+
+                        let visualHtml = "";
+                        if (typeof renderHistoryVisualHtml === "function" && effectiveVisualData) {
+                            const vRes = renderHistoryVisualHtml(effectiveVisualData, cleanQuestion, `qbank_${item.id}`);
+                            if (vRes) {
+                                visualHtml = vRes.html || "";
+                                if (Array.isArray(vRes.initCharts)) {
+                                    pendingCharts.push(...vRes.initCharts);
+                                }
+                            }
+                        }
+
                         const choicesText = (Array.isArray(item.choices) && item.choices.length > 0 && item.question_type === "객관식")
-                            ? `<div class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200">보기: ${item.choices.map((c, i) => `(${i + 1}) ${c}`).join(" / ")}</div>`
+                            ? `<div class="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 leading-relaxed font-semibold">보기: ${item.choices.map((c, i) => `(${i + 1}) ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(c, false) : c}`).join(" / ")}</div>`
                             : "";
-                        const miniGridHtml = (item.question_type === "단답형 주관식 2" && typeof renderMiniColoringGridHtml === "function")
-                            ? renderMiniColoringGridHtml(item.correct_answer, item.direction_footer || "")
-                            : "";
+
+                        const corrGridHtml = (typeof renderMiniColoringGridHtml === "function")
+                            ? renderMiniColoringGridHtml(item.correct_answer, effectiveDirFooter)
+                            : null;
 
                         return `
                             <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all space-y-2">
@@ -2182,16 +2205,28 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="text-xs font-bold text-slate-900 whitespace-pre-wrap leading-relaxed">${item.question_text}</div>
+                                <div class="text-xs font-bold text-slate-900 whitespace-pre-wrap leading-relaxed">${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(cleanQuestion, false) : cleanQuestion}</div>
+                                ${visualHtml ? `<div class="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200 my-1">${visualHtml}</div>` : ''}
                                 ${choicesText}
-                                ${miniGridHtml}
                                 <div class="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
-                                    <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답: ${item.correct_answer}</span>
-                                    ${item.explanation ? `<span class="text-slate-500 text-[11px] truncate max-w-md">해설: ${item.explanation}</span>` : ''}
+                                    ${corrGridHtml ? `
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답 (색칠 모양)</span>
+                                            <div class="inline-block align-middle">${corrGridHtml}</div>
+                                        </div>
+                                    ` : `
+                                        <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답: ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(item.correct_answer, true) : item.correct_answer}</span>
+                                    `}
+                                    ${item.explanation ? `<span class="text-slate-500 text-[11px] truncate max-w-md">해설: ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(item.explanation, false) : item.explanation}</span>` : ''}
                                 </div>
                             </div>
                         `;
                     }).join("");
+
+                    pendingCharts.forEach(fn => { try { fn(); } catch(e){} });
+                    if (typeof renderLatex === "function") {
+                        renderLatex(container);
+                    }
                 } else {
                     container.innerHTML = `<div class="text-xs text-slate-400 p-4 text-center">저장된 문제가 없습니다.</div>`;
                 }
