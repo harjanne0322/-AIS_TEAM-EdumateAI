@@ -1737,6 +1737,58 @@
       align-items: center;
       gap: 6px;
       border-top: 1px solid #e2e8f0;
+      user-select: none;
+    }
+
+    /* 📸 사진 밑 힌트 문구 스포 방지 가리기/해제 토글 버튼 */
+    .btn-caption-spoiler-toggle {
+      background: #ffffff;
+      color: #475569;
+      border: 1.2px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      flex-shrink: 0;
+    }
+
+    .btn-caption-spoiler-toggle:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+      border-color: #94a3b8;
+      transform: translateY(-1px);
+    }
+
+    .btn-caption-spoiler-toggle.active {
+      background: #eff6ff;
+      color: #0284c7;
+      border-color: #93c5fd;
+      box-shadow: 0 2px 6px rgba(2, 132, 199, 0.15);
+    }
+
+    .btn-caption-spoiler-toggle.active:hover {
+      background: #dbeafe;
+      color: #0369a1;
+    }
+
+    .caption-spoiler-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #b45309;
+      background: #fef3c7;
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid #fde68a;
+      letter-spacing: -0.3px;
     }
 
     /* 우측 퀘스트 패널 */
@@ -2957,9 +3009,17 @@
                   </div>
                 </div>
                 <div class="photo-caption" id="map-photo-caption">
-                  <span style="font-size:15px;">🏛️</span>
-                  <span id="map-photo-caption-text">국보 제31호 경주 첨성대</span>
-                  <span style="margin-left: auto; font-size: 11px; color: #0284c7; font-weight: 700;">확대 ➔</span>
+                  <div class="caption-text-group" id="map-caption-text-group" style="display:flex; align-items:center; gap:6px; flex:1; min-width:0; overflow:hidden;">
+                    <span style="font-size:15px;" id="map-caption-icon">🏛️</span>
+                    <span id="map-photo-caption-text" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">국보 제31호 경주 첨성대</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px; margin-left:auto; flex-shrink:0;">
+                    <button type="button" class="btn-caption-spoiler-toggle" id="btn-map-caption-toggle" onclick="toggleMapCaptionSpoiler(event)" title="정답 스포 방지 힌트 문구 가리기/해제">
+                      <span id="caption-toggle-icon">🙈</span>
+                      <span id="caption-toggle-label">가리기</span>
+                    </button>
+                    <span style="font-size: 11px; color: #0284c7; font-weight: 700;">확대 ➔</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3897,6 +3957,18 @@
         const lastFew = recentIds.slice(-2);
         const semiFresh = candidates.filter(q => !lastFew.includes(q.id));
         freshList = (semiFresh.length > 0) ? semiFresh : candidates;
+      }
+
+      // OX 퀴즈인 경우 O와 X 정답이 50:50 비율로 공평하게 출제되도록 보장
+      if (type === 'ox' || freshList.every(q => q.question_type === 'ox')) {
+        const oItems = freshList.filter(q => String(q.answer || '').trim().toUpperCase() === 'O');
+        const xItems = freshList.filter(q => String(q.answer || '').trim().toUpperCase() === 'X');
+        if (oItems.length > 0 && xItems.length > 0) {
+          const pickX = Math.random() < 0.5;
+          return pickX
+            ? xItems[Math.floor(Math.random() * xItems.length)]
+            : oItems[Math.floor(Math.random() * oItems.length)];
+        }
       }
 
       return freshList[Math.floor(Math.random() * freshList.length)];
@@ -4878,6 +4950,56 @@
       }
     }
 
+    // =========================================================================
+    // 📸 지도 탐구관 사진 밑 문구 스포 방지 가리기/해제 지속 관리
+    // =========================================================================
+    let isMapCaptionHidden = false;
+    try {
+      isMapCaptionHidden = localStorage.getItem('social_map_caption_hidden') === 'true';
+    } catch (e) {}
+
+    function updateMapCaptionSpoilerUI() {
+      const btn = document.getElementById('btn-map-caption-toggle');
+      const icon = document.getElementById('caption-toggle-icon');
+      const label = document.getElementById('caption-toggle-label');
+      const captionText = document.getElementById('map-photo-caption-text');
+      const captionIcon = document.getElementById('map-caption-icon');
+
+      if (!btn) return;
+
+      if (isMapCaptionHidden) {
+        btn.classList.add('active');
+        if (icon) icon.innerText = '👁️';
+        if (label) label.innerText = '해제';
+        btn.title = '스포 방지 가리기 해제하기 (문화재 이름 표시)';
+        if (captionIcon) captionIcon.innerText = '🔒';
+        if (captionText) {
+          captionText.innerHTML = '<span class="caption-spoiler-badge">🔒 힌트 가림 중 (스포 방지)</span>';
+        }
+      } else {
+        btn.classList.remove('active');
+        if (icon) icon.innerText = '🙈';
+        if (label) label.innerText = '가리기';
+        btn.title = '현재 문제부터 다음 문제까지 힌트 문구 가리기';
+        if (captionIcon) captionIcon.innerText = '🏛️';
+        if (currentMapQuiz && captionText) {
+          captionText.innerText = currentMapQuiz.photoCaption || currentMapQuiz.culture;
+        }
+      }
+    }
+
+    function toggleMapCaptionSpoiler(event) {
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+      isMapCaptionHidden = !isMapCaptionHidden;
+      try {
+        localStorage.setItem('social_map_caption_hidden', isMapCaptionHidden ? 'true' : 'false');
+      } catch (e) {}
+      updateMapCaptionSpoilerUI();
+    }
+
     function renderMapQuiz(item) {
       renderMapPins();
       renderPassportStamps();
@@ -4890,7 +5012,6 @@
       document.getElementById('map-story-keyword').innerText = item.keyword;
       document.getElementById('map-story-text').innerText = item.story;
       document.getElementById('map-question-text').innerText = item.quiz.question;
-
 
       // 문화재 실물 사진 카드 렌더링
       const photoImg = document.getElementById('map-photo-img');
@@ -4921,6 +5042,9 @@
       if (photoRegionPill) {
         photoRegionPill.innerText = item.name;
       }
+
+      // 스포 방지 가리기 상태 동기화 (현재 문제 및 다음 문제까지 지속 적용)
+      updateMapCaptionSpoilerUI();
 
       const answerBox = document.getElementById('map-answer-box');
       answerBox.innerHTML = '';
@@ -5259,8 +5383,20 @@
         img.src = currentMapQuiz.photoUrl || '';
       }
       if (title) title.innerText = `${currentMapQuiz.province} ${currentMapQuiz.name} 문화유산`;
-      if (caption) caption.innerText = currentMapQuiz.photoCaption || currentMapQuiz.culture;
-      if (keyword) keyword.innerText = `🧭 ${currentMapQuiz.keyword} | 🌾 특산품: ${currentMapQuiz.specialty}`;
+      if (caption) {
+        if (isMapCaptionHidden) {
+          caption.innerHTML = '<span style="color:#b45309; font-weight:800;">🔒 정답 스포 방지 중</span> (지도 화면의 [👁️ 해제] 버튼을 누르면 문화재 명칭이 표시됩니다)';
+        } else {
+          caption.innerText = currentMapQuiz.photoCaption || currentMapQuiz.culture;
+        }
+      }
+      if (keyword) {
+        if (isMapCaptionHidden) {
+          keyword.innerText = `🧭 지도 탐구관 스포 방지 모드 활성화됨`;
+        } else {
+          keyword.innerText = `🧭 ${currentMapQuiz.keyword} | 🌾 특산품: ${currentMapQuiz.specialty}`;
+        }
+      }
       if (badge) badge.innerText = `📸 ${currentMapQuiz.name}`;
 
       if (modal) modal.style.display = 'flex';

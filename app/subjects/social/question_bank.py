@@ -1132,11 +1132,28 @@ def draw_bank_question(
         # 만약 해당 단원에 특정 유형 미풀이 문제가 다 떨어졌더라도, 단원 내 다른 유형 미풀이 문제가 남아있다면 그것을 출제
         return filtered if filtered else rows
 
+    # OX 문제의 O/X 균형 및 최근 푼 문제 제외 스마트 추첨 헬퍼
+    def _pick_candidate(candidate_rows: List[sqlite3.Row], qtype: str) -> sqlite3.Row:
+        fresh = [r for r in candidate_rows if int(r["id"]) not in recent_bank_ids]
+        active = fresh if fresh else candidate_rows
+        target_en = TYPE_TO_EN.get(qtype, qtype)
+        # OX 퀴즈인 경우 O와 X 정답이 50:50 비율로 공평하게 출제되도록 추첨
+        if target_en == "ox" or all(TYPE_TO_EN.get(r["question_type"], r["question_type"]) == "ox" for r in active):
+            o_rows = [r for r in active if str(r["correct_answer"]).strip().upper() == "O"]
+            x_rows = [r for r in active if str(r["correct_answer"]).strip().upper() == "X"]
+            if o_rows and x_rows:
+                target_ox = random.choice(["O", "X"])
+                return random.choice(x_rows if target_ox == "X" else o_rows)
+            elif x_rows:
+                return random.choice(x_rows)
+            elif o_rows:
+                return random.choice(o_rows)
+        return random.choice(active)
+
     # 3) 미풀이 문제가 남아있는 경우 -> 1단계 정상 문제은행 출제
     if remaining_count > 0:
         pool = _filter_by_type(unsolved_all, question_type)
-        fresh_pool = [r for r in pool if int(r["id"]) not in recent_bank_ids]
-        chosen = random.choice(fresh_pool if fresh_pool else pool)
+        chosen = _pick_candidate(pool, question_type)
         return {
             "status": "unsolved",
             "quiz": _row_to_quiz_dict(chosen, is_review_mode=False),
@@ -1147,8 +1164,7 @@ def draw_bank_question(
 
     # 4) 해당 단원의 은행 문제를 이미 전부 다 푼 경우 -> 2단계(복습 모드 후보 반환)
     review_pool = _filter_by_type(unit_candidates, question_type)
-    fresh_review = [r for r in review_pool if int(r["id"]) not in recent_bank_ids]
-    chosen_review = random.choice(fresh_review if fresh_review else review_pool)
+    chosen_review = _pick_candidate(review_pool, question_type)
     return {
         "status": "exhausted",
         "quiz": _row_to_quiz_dict(chosen_review, is_review_mode=True),
