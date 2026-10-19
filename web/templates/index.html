@@ -629,7 +629,7 @@
             const rawName = document.getElementById("quickNameInput").value.trim();
             const nameVal = sanitizeUserName(rawName || "게스트");
             const gradeVal = parseInt(document.getElementById("quickGradeSelect").value || "4", 10);
-            const acc = { id: "guest", name: nameVal, grade: gradeVal, role: "guest", is_guest: true, managed_subjects: [], managed_subjects_kr: [], role_display: `게스트 (초등 ${gradeVal}학년)` };
+            const acc = { id: "guest", name: nameVal, grade: gradeVal, role: "guest", is_guest: true, managed_subjects: [], managed_subjects_kr: [], role_display: "비회원 체험" };
             saveAccountSession(acc);
             enterLobby(acc);
         }

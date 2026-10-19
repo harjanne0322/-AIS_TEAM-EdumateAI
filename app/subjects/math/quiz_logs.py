@@ -149,7 +149,7 @@ def get_user_status(user_name: str = "김에듀", grade: Optional[int] = None, p
     init_db()
     clean_name = (user_name or "김에듀").strip() or "김에듀"
     clean_id = (user_id or "").strip()
-    if clean_id.lower() == "guest" or clean_name.lower() in ("게스트", "guest"):
+    if clean_id.lower() == "guest" or (not clean_id and clean_name.lower() in ("게스트", "guest")):
         resolved_grade = int(grade) if (grade and 1 <= grade <= 6) else 4
         level_info = calculate_level_tier(0, pokemon_type=pokemon_type)
         return {
@@ -244,7 +244,7 @@ def save_quiz_log(
 
     is_guest = (
         clean_id.lower() == "guest"
-        or clean_name.lower() in ("게스트", "guest")
+        or (not clean_id and clean_name.lower() in ("게스트", "guest"))
         or kwargs.get("is_guest") is True
         or kwargs.get("role") == "guest"
     )

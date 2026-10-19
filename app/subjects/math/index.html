@@ -136,10 +136,10 @@
                         <p id="aiModeSubDesc" class="text-[11px] text-slate-500 font-medium">OFF 시 문제은행 DB 문제로 출제됩니다</p>
                     </div>
                     <button type="button" id="btnToggleAiMode" onclick="toggleAiGenerationMode()" role="switch" aria-checked="true"
-                        class="relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner"
+                        class="relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner"
                         title="AI 기반 출제 ON / 문제은행 출제 OFF 전환">
                         <span id="btnToggleAiModeKnob"
-                            class="pointer-events-none inline-block h-6 w-6 translate-x-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out"></span>
+                            class="pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out"></span>
                     </button>
                 </div>
             </div>
@@ -2046,6 +2046,10 @@
                 el.textContent = "총 관리자";
             } else if (currentUserRole === "sub_admin" && currentManagedSubjectsKr.length > 0) {
                 el.textContent = `부관리자(${currentManagedSubjectsKr.join(", ")})`;
+            } else if (currentUserRole === "sub_admin") {
+                el.textContent = "부관리자";
+            } else if (currentUserRole === "guest" || currentUserId === "guest" || !isLoggedIn) {
+                el.textContent = "비회원 체험";
             } else {
                 el.textContent = `초등 ${currentUserGrade}학년`;
             }
@@ -3588,11 +3592,11 @@
 
             if (isAiGenerationMode) {
                 if (btnToggle) {
-                    btnToggle.className = "relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner";
+                    btnToggle.className = "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner";
                     btnToggle.setAttribute("aria-checked", "true");
                 }
                 if (knob) {
-                    knob.className = "pointer-events-none inline-block h-6 w-6 translate-x-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out";
+                    knob.className = "pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out";
                 }
                 if (label) {
                     label.innerText = "🤖 AI 기반 출제";
@@ -3622,11 +3626,11 @@
                     banner.classList.add("hidden");
                 }
                 if (btnToggle) {
-                    btnToggle.className = "relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-emerald-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner";
+                    btnToggle.className = "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 bg-emerald-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner";
                     btnToggle.setAttribute("aria-checked", "false");
                 }
                 if (knob) {
-                    knob.className = "pointer-events-none inline-block h-6 w-6 translate-x-0 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out";
+                    knob.className = "pointer-events-none inline-block h-5 w-5 translate-x-0 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out";
                 }
                 if (label) {
                     label.innerText = "📚 문제은행 출제 (AI OFF)";

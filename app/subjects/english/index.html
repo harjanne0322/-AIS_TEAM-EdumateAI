@@ -2297,6 +2297,10 @@
       isAnswered = true;
       inputEl.disabled = true;
 
+      // 가이드라인 통일 표준: 3~4학년: 난이도 '중' 3점 | 5~6학년: 난이도 '상' 5점
+      const shortPoints = (currentGrade === '34') ? 3 : 5;
+      const shortDiff = (currentGrade === '34') ? '중' : '상';
+
       const isCorrect = (userText === currentQuiz.word.toLowerCase());
       playSound(isCorrect);
 
@@ -2304,10 +2308,6 @@
       const resTitle = document.getElementById('result-title');
       const resDesc = document.getElementById('result-desc');
       resBox.style.display = 'block';
-
-      // 가이드라인 통일 표준: 3~4학년: 난이도 '중' 3점 | 5~6학년: 난이도 '상' 5점
-      const shortPoints = (currentGrade === '34') ? 3 : 5;
-      const shortDiff = (currentGrade === '34') ? '중' : '상';
 
       const phonicsInfo = getWordPhonicsInfo(currentQuiz.word);
       const phonicsHtml = buildInteractivePhonicsHtml(currentQuiz.word, currentQuiz.ipa, '표준 소리');
@@ -2404,11 +2404,15 @@
           difficulty: (currentGrade === '56') ? "상" : "중"
         };
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         const res = await fetch('/english/api/grade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         if (res.ok) {
           const data = await res.json();
@@ -2427,14 +2431,25 @@
       }
 
       // 서버 일시 장애 시 로컬 안전 폴백
-      const fallbackResult = evaluateStrictFallback(userSentence, targetWord, targetMeaning, currentGrade);
-      finishGrading({
-        verdict: (fallbackResult.score >= 5) ? "perfect" : (fallbackResult.score >= 3 ? "awkward" : "incorrect"),
-        verdict_kr: (fallbackResult.score >= 5) ? "🎉 자연스럽고 완벽한 문장이에요!" : (fallbackResult.score >= 3 ? "💡 의미는 통하지만 표현이 조금 어색해요!" : "✏️ 틀린 부분이 있어 다시 확인해 보아요!"),
-        score: fallbackResult.score,
-        comment: fallbackResult.comment,
-        corrected: fallbackResult.corrected
-      }, userSentence, targetWord);
+      try {
+        const fallbackResult = evaluateStrictFallback(userSentence, targetWord, targetMeaning, currentGrade);
+        finishGrading({
+          verdict: (fallbackResult.score >= 5) ? "perfect" : (fallbackResult.score >= 3 ? "awkward" : "incorrect"),
+          verdict_kr: (fallbackResult.score >= 5) ? "🎉 자연스럽고 완벽한 문장이에요!" : (fallbackResult.score >= 3 ? "💡 의미는 통하지만 표현이 조금 어색해요!" : "✏️ 틀린 부분이 있어 다시 확인해 보아요!"),
+          score: fallbackResult.score,
+          comment: fallbackResult.comment,
+          corrected: fallbackResult.corrected
+        }, userSentence, targetWord);
+      } catch (fbErr) {
+        console.error("로컬 폴백 채점 오류:", fbErr);
+        finishGrading({
+          verdict: "awkward",
+          verdict_kr: "💡 표현을 확인해 보세요!",
+          score: 3,
+          comment: "문장을 멋지게 작성했어요! 첫 글자 대문자와 마침표를 확인해 보세요 ✨",
+          corrected: userSentence
+        }, userSentence, targetWord);
+      }
     }
 
     // 초등 기본 유효 어휘 사전 (비단어/오타 식별용 확장)
@@ -2480,6 +2495,9 @@
       const words = raw.split(/\s+/).filter(w => w.length > 0);
       const lower = raw.toLowerCase();
       const targetLower = (targetWord || '').toLowerCase();
+      const targetMeaning = meaning || '';
+      const cleanWords = words.map(w => w.toLowerCase().replace(/[^a-z]/g, '')).filter(w => w.length > 0);
+      const targetMissing = targetLower && !cleanWords.some(w => w.includes(targetLower) || targetLower.includes(w));
       const isVowelWord = /^[aeiou]/i.test(targetWord || '');
       const art = isVowelWord ? 'an' : 'a';
 
@@ -3215,10 +3233,11 @@
         const l = (v.lang || '').replace('_', '-').toLowerCase();
         const n = (v.name || '').toLowerCase();
         if (n.includes('australia') || n.includes('australian') || n.includes('kingdom') || n.includes('british') || n.includes('uk')) return false;
-        // 남성 성우 배제
+        // 한국어/된소리 억양 목소리 및 남성 배제
+        if (n.includes('korean') || n.includes('heami') || n.includes('clara') || n.includes('yuna')) return false;
         if (n.includes('david') || n.includes('guy') || n.includes('mark') || n.includes('male')) return false;
         const isUsLocale = (l === 'en-us' || l.startsWith('en-us-'));
-        const isUsName = n.includes('united states') || n.includes('google us english') || n.includes('us english') || n.includes('english (united states)') || n.includes('zira') || n.includes('jenny') || n.includes('aria') || n.includes('clara');
+        const isUsName = n.includes('united states') || n.includes('google us english') || n.includes('us english') || n.includes('english (united states)') || n.includes('zira') || n.includes('jenny') || n.includes('aria');
         return isUsLocale || isUsName;
       });
 
@@ -3226,10 +3245,11 @@
         usCandidates.sort((a, b) => {
           const score = v => {
             const n = (v.name || '').toLowerCase();
-            // [미국 여성] Jenny, Aria, Zira, Clara, Female 최우선 매칭
-            if (n.includes('natural') && (n.includes('jenny') || n.includes('aria'))) return 15;
-            if (n.includes('google') && n.includes('us')) return 10;
-            if (n.includes('zira') || n.includes('clara')) return 8;
+            // [미국 여성] Jenny, Aria, Google US English, Zira 최우선 매칭 (부드럽고 자연스러운 미국 표준 발음)
+            if (n.includes('natural') && (n.includes('jenny') || n.includes('aria'))) return 20;
+            if (n.includes('jenny') || n.includes('aria')) return 16;
+            if (n.includes('google') && n.includes('us')) return 14;
+            if (n.includes('zira')) return 8;
             if (n.includes('female')) return 7;
             if (n.includes('natural')) return 5;
             return 1;
@@ -3262,24 +3282,28 @@
 
       const normCode = (langCode || 'en-US');
       const voice = getAccurateVoice(normCode);
+      if (!voice) {
+        // [중요] 신뢰할 수 있는 영어 원어민 음성이 없으면 비영어(프랑스어 등) 음성 왜곡 방지를 위해 재생 차단
+        return;
+      }
 
       if (normCode.toLowerCase().includes('au')) {
         // [호주식 남성 발음 폴백]
         utter.lang = 'en-AU';
-        if (voice) utter.voice = voice;
+        utter.voice = voice;
         utter.rate = 0.88;
         utter.pitch = 0.85; // 중후한 남성 톤 피치
       } else if (normCode.toLowerCase().includes('gb') || normCode.toLowerCase().includes('uk')) {
         // [영국식 여성 표준 발음 폴백]
         utter.lang = 'en-GB';
-        if (voice) utter.voice = voice;
+        utter.voice = voice;
         utter.rate = 0.88;
         utter.pitch = 1.02; // 또박또박 맑은 여성 톤
       } else {
         // [미국식 여성 표준 발음 폴백]
         utter.lang = 'en-US';
-        if (voice) utter.voice = voice;
-        utter.rate = 0.90;
+        utter.voice = voice;
+        utter.rate = 1.0;
         utter.pitch = 1.0;
       }
 
@@ -3292,11 +3316,13 @@
 
     /* ========================================================
        원어민 공식 음원 재생 엔진
-       1순위: 네이버 영어사전 공식 음원 (미국 Clara / 영국 Richard) & 호주 표준 음원 (/english/api/audio)
+       1순위: 네이버 영어사전 공식 음원 (미국 Naver Studio / 영국 Oxford) & 호주 표준 음원 (/english/api/audio)
        2순위: 브라우저 고정밀 SpeechSynthesis 음성 엔진 안전 폴백
        ======================================================== */
     function speakAccent(langCode, customWord = null) {
-      const wordToSpeak = customWord || (currentQuizType === 'descriptive' && currentSuggestedSentence ? currentSuggestedSentence : currentQuiz?.word);
+      const rawWord = customWord || (currentQuizType === 'descriptive' && currentSuggestedSentence ? currentSuggestedSentence : currentQuiz?.word);
+      if (!rawWord) return;
+      const wordToSpeak = String(rawWord).trim();
       if (!wordToSpeak) return;
 
       const normCode = (langCode || 'en-US').toLowerCase();
@@ -3323,26 +3349,28 @@
         } catch (e) {}
       }
 
-      // 1순위: 네이버 공식 사전 음원 및 호주 표준 음원 스트리밍
+      // 1순위: 네이버 공식 사전 음원 및 미국 표준 원어민 음원 스트리밍 (타임스탬프로 캐시 방지)
       try {
-        const audioUrl = `/english/api/audio?word=${encodeURIComponent(wordToSpeak)}&accent=${encodeURIComponent(accentParam)}`;
+        console.log(`[원어민 발음] 재생 요청: "${wordToSpeak}" (${accentParam})`);
+        const audioUrl = `/english/api/audio?word=${encodeURIComponent(wordToSpeak)}&accent=${encodeURIComponent(accentParam)}&t=${Date.now()}`;
         const audio = new Audio(audioUrl);
         currentAudioPlayer = audio;
-        audio.playbackRate = 0.95;
+        audio.playbackRate = 1.0;
 
         let hasFallenBack = false;
-        const triggerFallback = () => {
+        const triggerFallback = (reason) => {
           if (!hasFallenBack) {
             hasFallenBack = true;
+            console.warn(`[원어민 음원 스트리밍 실패 (${reason})] 브라우저 음성 폴백 시도`);
             playSpeechSynthesisFallback(langCode, wordToSpeak);
           }
         };
 
-        audio.onerror = () => triggerFallback();
+        audio.onerror = (e) => triggerFallback('network_error');
 
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-          playPromise.catch(() => triggerFallback());
+          playPromise.catch((e) => triggerFallback(e.message || 'play_aborted'));
         }
       } catch (err) {
         playSpeechSynthesisFallback(langCode, wordToSpeak);

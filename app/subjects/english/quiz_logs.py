@@ -545,7 +545,7 @@ def save_quiz_log(
     finally:
         conn.close()
 
-    status = get_user_status(clean_name, _USER_GRADE_CACHE[clean_name], user_id=clean_id)
+    status = get_user_status(clean_name, _USER_GRADE_CACHE.get(clean_name, effective_grade or 4), user_id=clean_id)
     return {
         "log_id": log_id,
         "quiz_id": effective_quiz_id,

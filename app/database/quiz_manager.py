@@ -152,7 +152,7 @@ def parse_managed_subjects(raw_val: Optional[str], role: str = "student") -> Lis
 
 
 def format_role_display(role: Any, managed_subjects: List[str], grade: Optional[int] = None) -> str:
-    """권한 및 담당 과목에 따른 표준 표시명 반환 ('총 관리자', '부관리자(수학, 과학)', '학생 계정')"""
+    """권한 및 담당 과목에 따른 표준 표시명 반환 ('총 관리자', '부관리자(수학, 과학)', '초등 4학년', '비회원 체험')"""
     if role == "admin" or role == 1:
         return "총 관리자"
     if managed_subjects:
@@ -163,7 +163,10 @@ def format_role_display(role: Any, managed_subjects: List[str], grade: Optional[
         return "부관리자"
     if role == "guest":
         return "비회원 체험"
-    return "학생 계정"
+    if grade:
+        return f"초등 {grade}학년"
+    return "학생"
+
 
 
 _USER_POKEMON_TYPE_CACHE: Dict[str, str] = {"김에듀": "grass"}
@@ -923,7 +926,8 @@ def get_or_create_user(
     clean_name = _sanitize_name(user_name or "김에듀").strip() or "김에듀"
     clean_id = (user_id or "").strip()
 
-    if clean_id.lower() == "guest" or clean_name.lower() in ("게스트", "guest"):
+    # 비회원 체험(게스트): 아이디가 명시적으로 'guest'이거나, 아이디 없이 이름만 '게스트'/'guest'인 경우
+    if clean_id.lower() == "guest" or (not clean_id and clean_name.lower() in ("게스트", "guest")):
         resolved_grade = int(grade) if (grade and 1 <= int(grade) <= 6) else 4
         level_info = calculate_level_tier(0, pokemon_type="grass")
         return {

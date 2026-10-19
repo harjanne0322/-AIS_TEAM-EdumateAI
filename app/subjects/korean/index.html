@@ -351,11 +351,10 @@
                     const res = await fetch(`/korean/question-bank/unit-stats?grade=${encodeURIComponent(grade)}&user_id=${encodeURIComponent(getUserId() || '')}&user_name=${encodeURIComponent(getUserAccount())}`);
                     if (res.ok) {
                         const data = await res.json();
-                        // data: { units: { "1단원...": { total, solved, unsolved } }, total_all, solved_all }
-                        if (data && data.units) {
-                            statsMap = data.units;
-                            totalBank = data.total_all || 0;
-                            totalSolved = data.solved_all || 0;
+                        if (data) {
+                            statsMap = data.units || data.stats || data;
+                            totalBank = data.total_all ?? 0;
+                            totalSolved = data.solved_all ?? 0;
                         }
                     }
                 } catch (e) {
@@ -372,18 +371,23 @@
             units.forEach(u => {
                 let label = u;
                 if (!isAi) {
-                    // 단원명 매칭
+                    // 단원명 매칭 (접두어 '5단원' 및 문자열 포함 정밀 매칭)
                     let st = null;
+                    const uClean = u.replace(/\s+/g, "");
+                    const uPrefix = (u.split(':')[0] || "").trim();
                     for (const [k, v] of Object.entries(statsMap)) {
-                        if (u.includes(k) || k.includes(u.split(':')[0])) {
+                        if (!v || typeof v !== "object") continue;
+                        const kClean = k.replace(/\s+/g, "");
+                        const kPrefix = (k.split(':')[0] || "").trim();
+                        if (uClean.includes(kClean) || kClean.includes(uClean) || (uPrefix && kPrefix && uPrefix === kPrefix)) {
                             st = v;
                             break;
                         }
                     }
-                    if (st) {
-                        label = `${u} (${st.solved}/${st.total})`;
+                    if (st && st.total > 0) {
+                        label = `${u} (${st.solved || 0}/${st.total})`;
                     } else {
-                        label = `${u} (0/5)`;
+                        label = `${u} (0/0)`;
                     }
                 }
                 const isSelected = (curVal === u) ? "selected" : "";

@@ -257,7 +257,16 @@ async def api_get_unit_bank_stats(
         if m:
             grade_num = int(m.group(1))
     user_key = (user_id or user_name or "guest").strip()
-    return get_unit_bank_stats(grade_num=grade_num, user_key=user_key, grade_str=grade)
+    stats = get_unit_bank_stats(grade_num=grade_num, user_key=user_key, grade_str=grade)
+    total_all = sum(v.get("total", 0) for v in stats.values())
+    solved_all = sum(v.get("solved", 0) for v in stats.values())
+    return {
+        "status": "success",
+        "units": stats,
+        "total_all": total_all,
+        "solved_all": solved_all,
+        **stats
+    }
 
 @router.post("/question-bank/mark-solved")
 async def api_mark_bank_solved(req: MarkSolvedRequest):
@@ -334,7 +343,6 @@ async def get_curriculum_summary():
     """단원 선택 UI를 위한 텍스트 요약 제공"""
     return {"curriculum": load_curriculum_text()}
 
-@router.post("/quiz", response_model=QuizSetResponse)
 def _convert_bank_items_to_quiz_items(bank_items: List[Dict[str, Any]], grade: str) -> List[QuizItem]:
     """문제은행 레코드를 프론트엔드 QuizItem 목록으로 변환"""
     quiz_items = []
@@ -389,12 +397,13 @@ def _convert_bank_items_to_quiz_items(bank_items: List[Dict[str, Any]], grade: s
     return quiz_items
 
 
-def _generate_ai_quiz_items(client: Any, req: QuizRequest, curriculum_context: str) -> List[QuizItem]:
-    """Gemini AI를 통한 5문항 실시간 퀴즈 생성"""
+def _generate_ai_quiz_items(client: Any, req: QuizRequest, curriculum_context: str, count: int = 5, start_id: int = 1) -> List[QuizItem]:
+    """Gemini AI를 통한 실시간 퀴즈 생성 (지정된 count 문항)"""
+    count = max(1, min(10, count))
     target_unit_instruction = ""
     if req.unit and req.unit.strip() and req.unit.strip() != "전체":
-        target_unit_instruction = f"\n[★ 지정 단원 집중 출제]: 학생이 선택한 단원은 '{req.unit}'입니다. 5개 문항 모두 반드시 이 '{req.unit}' 단원의 교육과정 학습 목표와 핵심 개념에 집중하여 출제해 주세요."
-        unit_rule = f"1. 단원 선정: 학생이 지정한 '{req.unit}' 단원의 핵심 내용에서 5문항 모두 집중 출제하세요."
+        target_unit_instruction = f"\n[★ 지정 단원 집중 출제]: 학생이 선택한 단원은 '{req.unit}'입니다. {count}개 문항 모두 반드시 이 '{req.unit}' 단원의 교육과정 학습 목표와 핵심 개념에 집중하여 출제해 주세요."
+        unit_rule = f"1. 단원 선정: 학생이 지정한 '{req.unit}' 단원의 핵심 내용에서 {count}문항 모두 집중 출제하세요."
     elif req.use_weakest:
         weak = get_weakest_unit_and_topic(req.user_name or "김에듀")
         if weak and weak.get("unit"):
@@ -438,7 +447,7 @@ def _generate_ai_quiz_items(client: Any, req: QuizRequest, curriculum_context: s
 
     prompt = f"""
 당신은 2022 개정 초등학교 국어 교육과정 전문 AI 교사입니다.
-아래 [교육과정 단원 목록]에서 {req.grade}의 목차를 참고하여, 총 5개의 국어 평가 문제를 출제해주세요.{target_unit_instruction}
+아래 [교육과정 단원 목록]에서 {req.grade}의 목차를 참고하여, 총 {count}개의 국어 평가 문제를 출제해주세요.{target_unit_instruction}
 
 [교육과정 단원 목록]
 {curriculum_context}
@@ -448,66 +457,22 @@ def _generate_ai_quiz_items(client: Any, req: QuizRequest, curriculum_context: s
 [★ 출제 원칙 ★]
 {unit_rule}
 2. 대상 학년: {req.grade}
-3. 문제 수: 정확히 5문항 (id: 1, 2, 3, 4, 5)
-4. 출제 문제 유형: {req.question_type} (5문항 모두 반드시 지정된 '{req.question_type}' 유형의 공식에 맞게 출제)
+3. 문제 수: 정확히 {count}문항 (id: {start_id}부터 {start_id + count - 1}까지)
+4. 출제 문제 유형: {req.question_type} ({count}문항 모두 반드시 지정된 '{req.question_type}' 유형의 공식에 맞게 출제)
 5. 국어과 역량 중심: 질문은 반드시 국어적 역량(중심 내용, 관점, 사실과 의견, 어휘 의미, 맞춤법 등)을 평가할 것.
 6. 난이도 및 차등 배점 원칙 (필수 준수):
-   - 5문항의 난이도를 다양하게 분배하세요: '하' (기초 확인 1~2문항), '중' (표준 적용 2~3문항), '상' (심화 추론 1문항).
+   - 문항의 난이도를 다양하게 분배하세요: '하' (기초 확인), '중' (표준 적용), '상' (심화 추론).
    - difficulty 값은 반드시 '하', '중', '상' 중 하나만 입력하세요.
    - 난이도별 배점(base_score): '하'는 1점, '중'은 3점, '상'은 5점을 정확히 부여하세요.
 
 반드시 아래 JSON 형식으로만 응답하세요:
 {{
   "grade": "{req.grade}",
-  "total_count": 5,
+  "total_count": {count},
   "questions": [
     {{
-      "id": 1,
-      "unit": "출제 단원명1",
-      "question_type": "{req.question_type}",
-      "difficulty": "하",
-      "base_score": 1,
-      "question": "문제 내용",
-      "options": {sample_options},
-      "answer": "정답",
-      "explanation": "해설"
-    }},
-    {{
-      "id": 2,
-      "unit": "출제 단원명2",
-      "question_type": "{req.question_type}",
-      "difficulty": "중",
-      "base_score": 3,
-      "question": "문제 내용",
-      "options": {sample_options},
-      "answer": "정답",
-      "explanation": "해설"
-    }},
-    {{
-      "id": 3,
-      "unit": "출제 단원명3",
-      "question_type": "{req.question_type}",
-      "difficulty": "중",
-      "base_score": 3,
-      "question": "문제 내용",
-      "options": {sample_options},
-      "answer": "정답",
-      "explanation": "해설"
-    }},
-    {{
-      "id": 4,
-      "unit": "출제 단원명4",
-      "question_type": "{req.question_type}",
-      "difficulty": "상",
-      "base_score": 5,
-      "question": "문제 내용",
-      "options": {sample_options},
-      "answer": "정답",
-      "explanation": "해설"
-    }},
-    {{
-      "id": 5,
-      "unit": "출제 단원명5",
+      "id": {start_id},
+      "unit": "출제 단원명",
       "question_type": "{req.question_type}",
       "difficulty": "중",
       "base_score": 3,
@@ -537,7 +502,7 @@ def _generate_ai_quiz_items(client: Any, req: QuizRequest, curriculum_context: s
     clean_questions: List[QuizItem] = []
     t_stamp = int(time.time() * 1000)
 
-    for idx, q in enumerate(raw_questions[:5], start=1):
+    for idx, q in enumerate(raw_questions[:count], start=start_id):
         q_type = req.question_type
         q_text = str(q.get("question", "")).strip()
         q_ans = str(q.get("answer", "")).strip()
@@ -612,9 +577,9 @@ def _generate_ai_quiz_items(client: Any, req: QuizRequest, curriculum_context: s
             )
         )
 
-    # 5개 미만 안전 보정
-    while len(clean_questions) < 5:
-        n = len(clean_questions) + 1
+    # 부족한 문항 안전 보정 (count개 맞춤)
+    while len(clean_questions) < count:
+        n = start_id + len(clean_questions)
         fb_diff = "하" if n == 1 else ("상" if n >= 4 else "중")
         fb_score = {"하": 1, "중": 3, "상": 5}.get(fb_diff, 3)
         def_opts = ["O", "X"] if req.question_type == "OX" else (["첫째", "둘째", "셋째", "넷째"] if req.question_type == "객관식" else [])
@@ -645,7 +610,9 @@ async def generate_korean_quiz_set(req: QuizRequest):
     [양방향 자동 폴백 3단계 엔진 지원]
     1. 문제은행 출제 모드 (is_ai_mode=False):
        - question_bank.db에서 미풀이 문제 조회
-       - 미풀이 문제 소진/부재 시 -> [정방향 폴백] 실시간 AI 출제로 자동 전환
+       - 5문항 완비 시: 5문제 모두 은행 출제
+       - 1~4문항 시: 은행 문제 + 부족한 문항은 실시간 AI 출제로 자동 보충 (하이브리드 출제)
+       - 미풀이 문제 소진/부재 시 -> [정방향 폴백] 실시간 AI 5문항 출제로 자동 전환
     2. AI 출제 모드 (is_ai_mode=True):
        - 실시간 Gemini AI 5문항 출제
        - AI 실패 시 -> [역방향 폴백 3단계]:
@@ -673,9 +640,11 @@ async def generate_korean_quiz_set(req: QuizRequest):
             count=5,
             allow_review=False
         )
-        if bank_items:
-            # 정상 문제은행 출제
-            q_items = _convert_bank_items_to_quiz_items(bank_items, req.grade)
+        bank_count = len(bank_items) if bank_items else 0
+
+        # 1) 문제은행에 5문제 이상 존재: 5문제 모두 은행 출제
+        if bank_count >= 5:
+            q_items = _convert_bank_items_to_quiz_items(bank_items[:5], req.grade)
             return QuizSetResponse(
                 grade=req.grade,
                 total_count=len(q_items),
@@ -686,10 +655,41 @@ async def generate_korean_quiz_set(req: QuizRequest):
                 fallback_message=None
             )
 
-        # [정방향 폴백]: 은행 문제 소진 시 AI 출제로 자동 전환
+        # 2) 문제은행에 1~4문제 존재: 은행 문제 + 부족한 문제는 AI 실시간 출제로 자동 보충하여 5문제 세트 완성!
+        elif bank_count > 0:
+            bank_q_items = _convert_bank_items_to_quiz_items(bank_items, req.grade)
+            needed_ai = 5 - bank_count
+            try:
+                client = get_genai_client()
+                ai_items = _generate_ai_quiz_items(client, req, curriculum_context, count=needed_ai, start_id=bank_count + 1)
+                combined = bank_q_items + ai_items
+                for idx, it in enumerate(combined, start=1):
+                    it.id = idx
+                return QuizSetResponse(
+                    grade=req.grade,
+                    total_count=len(combined),
+                    questions=combined,
+                    mode="bank",
+                    is_fallback=True,
+                    is_review=False,
+                    fallback_message=f"문제은행에서 {bank_count}문제를 불러오고, 부족한 {needed_ai}문제는 AI 실시간 출제로 자동 보충했습니다."
+                )
+            except Exception:
+                # AI 연결 불가 시 은행 문제(1~4개)만이라도 정상 출제
+                return QuizSetResponse(
+                    grade=req.grade,
+                    total_count=len(bank_q_items),
+                    questions=bank_q_items,
+                    mode="bank",
+                    is_fallback=False,
+                    is_review=False,
+                    fallback_message=f"문제은행에 등록된 {bank_count}문제를 출제했습니다."
+                )
+
+        # 3) [정방향 폴백]: 은행 문제 0개일 때 -> AI 5문항 전체 실시간 출제로 자동 전환
         try:
             client = get_genai_client()
-            ai_questions = _generate_ai_quiz_items(client, req, curriculum_context)
+            ai_questions = _generate_ai_quiz_items(client, req, curriculum_context, count=5, start_id=1)
             return QuizSetResponse(
                 grade=req.grade,
                 total_count=len(ai_questions),

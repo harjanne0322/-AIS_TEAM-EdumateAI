@@ -1,10 +1,12 @@
 import os
 import sys
+import re
+import ssl
 import json
 import random
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, Response
 import urllib.request
 import urllib.parse
@@ -27,6 +29,13 @@ try:
         get_or_create_user,
         get_user_status,
     )
+    from .question_bank import (
+        init_question_bank_db,
+        get_unit_bank_stats,
+        mark_bank_question_solved,
+        fetch_next_bank_question,
+        save_question_to_bank,
+    )
 except ImportError:
     from quiz_logs import (
         save_quiz_log,
@@ -35,6 +44,13 @@ except ImportError:
         get_weakest_unit_and_topic,
         get_or_create_user,
         get_user_status,
+    )
+    from question_bank import (
+        init_question_bank_db,
+        get_unit_bank_stats,
+        mark_bank_question_solved,
+        fetch_next_bank_question,
+        save_question_to_bank,
     )
 
 # 2. [가이드라인 261008 표준] 환경변수 다중 계단식 폴백 로드 (.env -> 상위 .env -> 시스템 환경변수)
@@ -270,6 +286,173 @@ async def generate_short_question(req: GenerateShortRequest):
     return {"success": True, "question": chosen, "source": "bank"}
 
 
+# ---------------------------------------------------------------------------
+# [공통 표준] 문제은행 단원 통계 / 풀이 기록 / 출제 / AI 채점 API
+# ---------------------------------------------------------------------------
+@router.get("/api/question-bank/unit-stats")
+async def get_bank_unit_stats(
+    subject: str = Query("english"),
+    user_id: Optional[str] = Query(None),
+    user_name: str = Query("김에듀"),
+    grade: Optional[int] = Query(None),
+):
+    """각 단원별 (맞춘 문제 / 전체 은행 문제) 실시간 통계 반환"""
+    user_key = (user_id or user_name or "김에듀").strip() or "김에듀"
+    return get_unit_bank_stats(subject=subject, user_key=user_key, grade=grade)
+
+
+class MarkSolvedRequest(BaseModel):
+    bank_id: int
+    subject: str = "english"
+    user_id: Optional[str] = None
+    user_name: str = "김에듀"
+
+
+@router.post("/api/question-bank/mark-solved")
+async def post_mark_bank_solved(req: MarkSolvedRequest):
+    """문제은행 문제 정답 풀이 기록"""
+    user_key = (req.user_id or req.user_name or "김에듀").strip() or "김에듀"
+    ok = mark_bank_question_solved(bank_id=req.bank_id, subject=req.subject, user_key=user_key)
+    return {"success": ok}
+
+
+@router.get("/api/question-bank/next")
+async def get_next_question_from_bank(
+    subject: str = Query("english"),
+    unit_name: Optional[str] = Query(None),
+    grade: Optional[int] = Query(4),
+    question_type: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
+    user_name: str = Query("김에듀"),
+    allow_review: bool = Query(False),
+):
+    """
+    문제은행 DB에서 다음 문제 출제
+    - allow_review=False: 미풀이 문제 우선 출제
+    - allow_review=True: 이미 푼 문제라도 복습용 랜덤 출제 (is_review=True)
+    """
+    user_key = (user_id or user_name or "김에듀").strip() or "김에듀"
+    q_dict, is_rev = fetch_next_bank_question(
+        subject=subject,
+        unit_name=unit_name,
+        grade=grade,
+        question_type=question_type,
+        user_key=user_key,
+        allow_review=allow_review,
+    )
+    if q_dict:
+        return {"success": True, "question": q_dict, "is_review": is_rev, "source": "bank"}
+    return {"success": False, "question": None, "is_review": False, "source": "bank"}
+
+
+class AIGenerateRequest(BaseModel):
+    grade: str = "34"
+    unit_name: Optional[str] = "동물"
+    question_type: str = "객관식"  # "객관식" | "단답형" | "서술형"
+    user_name: str = "김에듀"
+    user_id: Optional[str] = None
+
+
+@router.post("/api/question-bank/ai-generate")
+async def generate_ai_question(req: AIGenerateRequest):
+    """
+    단원/유형 맞춤형 Gemini 실시간 AI 문제 출제
+    - 실패 시 {"success": False, "error": ...} 반환하여 프론트엔드가 즉시 3단계 폴백으로 전환
+    """
+    cli = get_genai_client()
+    if not cli:
+        return {"success": False, "error": "AI_CLIENT_NOT_AVAILABLE"}
+
+    grade_label = "초등 3~4학년" if req.grade == "34" else "초등 5~6학년"
+    unit_val = req.unit_name or "생활"
+
+    prompt = f"""
+    너는 대한민국 2022 개정 초등영어 교육과정 전문 출제위원이야.
+    {grade_label} 수준의 [{unit_val}] 단원에 알맞은 초등 영어 {req.question_type} 문제를 1개 만들어줘.
+
+    [요구 조건]:
+    1. 초등 필수 어휘 및 자연스러운 일상 표현을 다룰 것.
+    2. 객관식일 경우 4개의 보기(choices) 배열을 만들고, 그중 1개가 정답이어야 함.
+    3. 단답형일 경우 영어 단어 철자 문제여야 함.
+    4. 서술형일 경우 학생이 1문장을 영작하는 지문과 추천 문장이어야 함.
+
+    반드시 아래 JSON 형식으로만 응답해:
+    {{
+        "word": "target_word",
+        "ipa": "/ipa_sound/",
+        "meaning": "한국어 뜻",
+        "hint": "초등학생 눈높이 힌트",
+        "question_type": "{req.question_type}",
+        "question_text": "문제 지문 텍스트",
+        "choices": ["보기1", "보기2", "보기3", "보기4"],
+        "correct_answer": "정답단어 또는 모범문장",
+        "explanation": "친절한 정답 설명",
+        "difficulty": "중",
+        "points": 3
+    }}
+    """
+    for m in OFFICIAL_MODELS:
+        try:
+            res = cli.models.generate_content(
+                model=m,
+                contents=prompt,
+                config={"response_mime_type": "application/json"},
+            )
+            raw = res.text.strip()
+            if "```json" in raw:
+                raw = raw.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw:
+                raw = raw.split("```")[1].split("```")[0].strip()
+            data = json.loads(raw)
+            return {"success": True, "question": data, "source": "ai"}
+        except Exception:
+            continue
+
+    return {"success": False, "error": "AI_GENERATION_FAILED"}
+
+
+class SaveBankQuestionRequest(BaseModel):
+    question_text: str
+    correct_answer: str
+    question_type: str = "객관식"
+    grade: int = 4
+    grade_group: str = "3~4학년군"
+    unit_name: str = "기본 어휘"
+    sub_topic: str = ""
+    difficulty: str = "중"
+    points: int = 3
+    choices: Optional[List[str]] = None
+    explanation: str = ""
+    source_type: str = "manual"
+    source_log_id: Optional[int] = None
+    created_by: str = "master"
+    created_by_name: str = "총 관리자"
+
+
+@router.post("/api/question-bank/save")
+async def api_save_question_to_bank(req: SaveBankQuestionRequest):
+    """표준 문제은행 DB(question_bank.db)에 신규 문제 저장 API"""
+    b_id = save_question_to_bank(
+        question_text=req.question_text,
+        correct_answer=req.correct_answer,
+        question_type=req.question_type,
+        grade=req.grade,
+        grade_group=req.grade_group,
+        unit_name=req.unit_name,
+        sub_topic=req.sub_topic,
+        difficulty=req.difficulty,
+        points=req.points,
+        choices=req.choices,
+        explanation=req.explanation,
+        source_type=req.source_type,
+        source_log_id=req.source_log_id,
+        created_by=req.created_by,
+        created_by_name=req.created_by_name,
+    )
+    return {"success": True, "bank_id": b_id}
+
+
+
 # 8. 서술형: AI 3단계 문장 정밀 검수(맞는 문장 / 어색한 문장 / 틀린 문장) 및 첨삭 코칭 API
 class GradeRequest(BaseModel):
     user_id: Optional[str] = None
@@ -478,6 +661,87 @@ async def grade_descriptive_answer(req: GradeRequest):
     }
 
 
+class BankGradeRequest(BaseModel):
+    bank_id: Optional[int] = None
+    question_type: str = "서술형"  # "단답형" | "서술형"
+    question_text: str = ""
+    correct_answer: str = ""
+    user_answer: str = ""
+    unit_name: Optional[str] = None
+    grade: str = "34"
+    user_name: str = "김에듀"
+    user_id: Optional[str] = None
+
+
+@router.post("/api/question-bank/grade")
+async def grade_bank_question(req: BankGradeRequest):
+    """문제은행 주관식(단답형) 및 서술형 AI 채점 및 피드백 API"""
+    q_type = req.question_type
+    user_ans = req.user_answer.strip()
+    corr_ans = req.correct_answer.strip()
+
+    if q_type in ["단답형", "주관식"]:
+        is_exact = (user_ans.lower() == corr_ans.lower())
+        if is_exact:
+            return {
+                "is_correct": True,
+                "score": 5,
+                "earned_score": 3,
+                "feedback": f"정확한 철자입니다! '{corr_ans}'을(를) 완벽하게 맞혔어요! 👏",
+                "sample": corr_ans,
+            }
+
+        # AI 단답형 오타/동의어 판정
+        cli = get_genai_client()
+        if cli:
+            try:
+                prompt = f"""
+                초등 영어 단답형 문제 채점:
+                - 문제: {req.question_text}
+                - 모범 정답: {corr_ans}
+                - 학생 답안: {user_ans}
+
+                JSON 응답:
+                {{"is_correct": true|false, "feedback": "초등학생 눈높이 1문장 피드백", "score": 1~5}}
+                """
+                res = cli.models.generate_content(
+                    model=MODEL_NAME,
+                    contents=prompt,
+                    config={"response_mime_type": "application/json"},
+                )
+                data = json.loads(res.text.strip())
+                corr = bool(data.get("is_correct", False))
+                return {
+                    "is_correct": corr,
+                    "score": int(data.get("score", 3 if corr else 1)),
+                    "earned_score": 3 if corr else 0,
+                    "feedback": data.get("feedback", f"바른 철자는 '{corr_ans}'입니다."),
+                    "sample": corr_ans,
+                }
+            except Exception:
+                pass
+
+        return {
+            "is_correct": False,
+            "score": 1,
+            "earned_score": 0,
+            "feedback": f"아쉬워요! 바른 철자는 '{corr_ans}'입니다.",
+            "sample": corr_ans,
+        }
+
+    # 서술형: AI 3단계 정밀 검수 호출
+    desc_req = GradeRequest(
+        user_id=req.user_id,
+        user_name=req.user_name,
+        grade=req.grade,
+        target_word=corr_ans,
+        user_answer=user_ans,
+        unit=req.unit_name or "단원 학습",
+        topic="문장 표현",
+    )
+    return await grade_descriptive_answer(desc_req)
+
+
 # 8. AI 선생님께 이어서 질문하기 API
 class ChatRequest(BaseModel):
     log_id: int
@@ -556,7 +820,7 @@ async def get_weakest(user_name: str = Query("김에듀"), user_id: Optional[str
 
 
 # ---------------------------------------------------------------------------
-# 11. [네이버 영어사전 공식 음원] 미국식(Clara) / 영국식(Richard) & 호주 표준 발음 스트리밍 API
+# 11. [네이버 영어사전 공식 음원] 미국식(Naver Studio) / 영국식(Oxford) & 호주 표준 발음 스트리밍 API
 # ---------------------------------------------------------------------------
 _AUDIO_CACHE: Dict[str, bytes] = {}
 
@@ -564,75 +828,135 @@ _AUDIO_CACHE: Dict[str, bytes] = {}
 def fetch_naver_dict_audio(word: str, accent: str = "us") -> Optional[bytes]:
     """
     네이버 어학사전(en.dict.naver.com)의 공식 원어민 스튜디오 녹음 음원(MP3)을 실시간 파싱하여 스트리밍
-    - US: 네이버 사전 공식 미국 원어민 여성 음원
-    - UK/GB: 네이버 사전 공식 옥스퍼드 영국 원어민 여성 음원
+    - US: 네이버 사전 공식 미국 원어민 스튜디오 녹음 음원 (1순위)
+    - UK/GB: 네이버 사전 공식 옥스퍼드 영국 원어민 녹음 음원
     """
     clean_word = word.strip().lower()
-    if not clean_word or " " in clean_word:
+    if not clean_word:
         return None
 
-    try:
-        search_url = f"https://en.dict.naver.com/api3/eko/search?query={urllib.parse.quote(clean_word)}&range=word"
-        req = urllib.request.Request(
-            search_url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://en.dict.naver.com/"
-            }
-        )
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+    # 공백이 있는 긴 문장은 사전 표제어 검색 대신 실시간 음성 스트림으로 처리
+    if " " in clean_word:
+        return None
 
-        items = (
-            data.get("searchResultMap", {})
-            .get("searchResultListMap", {})
-            .get("WORD", {})
-            .get("items", [])
-        )
+    ssl_ctx = ssl._create_unverified_context()
+    target_accent = "us" if accent.lower() in ["us", "en-us"] else "uk"
 
-        target_type = "UK" if accent.lower() in ["gb", "uk", "en-gb"] else "US"
-        audio_url = None
+    # 네이버 영한사전 웹 및 모바일 API 검색 엔드포인트
+    search_queries = [
+        f"https://en.dict.naver.com/api3/enko/search?query={urllib.parse.quote(clean_word)}&m=pc&range=word",
+        f"https://dict.naver.com/api3/enko/search?query={urllib.parse.quote(clean_word)}&m=pc&range=word",
+        f"https://m.dict.naver.com/api3/enko/search?query={urllib.parse.quote(clean_word)}&range=word",
+        f"https://en.dict.naver.com/api3/eko/search?query={urllib.parse.quote(clean_word)}&range=word",
+    ]
 
-        for item in items:
-            entry = item.get("expEntry", "").lower()
-            if entry == clean_word or not audio_url:
-                symbol_list = item.get("searchPhoneticSymbolList", [])
-                for sym in symbol_list:
-                    s_type = (sym.get("symbolType") or "").upper()
-                    if s_type == target_type and sym.get("url"):
-                        audio_url = sym.get("url")
-                        break
-            if audio_url:
-                break
-
-        if audio_url:
-            if audio_url.startswith("//"):
-                audio_url = "https:" + audio_url
-            elif audio_url.startswith("http://"):
-                audio_url = "https://" + audio_url[7:]
-
-            audio_req = urllib.request.Request(
-                audio_url,
+    for search_url in search_queries:
+        try:
+            req = urllib.request.Request(
+                search_url,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Referer": "https://en.dict.naver.com/"
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Referer": "https://en.dict.naver.com/",
+                    "Accept": "application/json, text/plain, */*",
                 }
             )
-            with urllib.request.urlopen(audio_req, timeout=3.5) as a_resp:
-                content = a_resp.read()
-                if len(content) > 100:
-                    return content
-    except Exception as e:
-        print(f"[Naver Dict Audio Search Exception] {accent} '{clean_word}': {e}")
+            with urllib.request.urlopen(req, context=ssl_ctx, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            items = (
+                data.get("searchResultMap", {})
+                .get("searchResultListMap", {})
+                .get("WORD", {})
+                .get("items", [])
+            )
+            if not items:
+                continue
+
+            candidates = []
+
+            # 1. 표제어 순회하며 발음 기호/음원 후보 수집 및 정밀 스코어링
+            for item in items:
+                raw_entry = item.get("expEntry", "") or item.get("handleEntry", "") or item.get("entryName", "")
+                clean_entry = re.sub(r'<[^>]+>', '', raw_entry).strip().lower()
+                clean_entry = re.sub(r'[\d\s\-_()]+$', '', clean_entry).strip()
+
+                is_exact = (clean_entry == clean_word)
+
+                symbol_list = item.get("searchPhoneticSymbolList", []) or []
+                for sym in symbol_list:
+                    s_type = (sym.get("symbolType") or "").upper()
+                    s_name = (sym.get("symbol") or "").upper()
+                    s_url = sym.get("phoneticSymbolPath") or sym.get("soundUrl") or sym.get("audioUrl") or sym.get("url") or sym.get("mp3Url") or ""
+                    if not s_url:
+                        continue
+
+                    u_lower = s_url.lower()
+                    score = 0
+
+                    if target_accent == "us":
+                        # [미국식 판별] 네이버 사전 공식 미국 원어민 스튜디오 MP3 링크 최우선 매칭
+                        if "/us/" in u_lower or "pron/new/us" in u_lower or "_us_" in u_lower or "us.mp3" in u_lower:
+                            score += 120
+                        elif "US" in s_type or "USA" in s_type or "미국" in s_name or s_type == "A":
+                            score += 90
+                        elif not ("/uk/" in u_lower or "pron/new/uk" in u_lower or "_uk_" in u_lower or "uk.mp3" in u_lower or "UK" in s_type or "GB" in s_type or "영국" in s_name):
+                            score += 30  # 중립
+                        else:
+                            score -= 80  # 영국식 음원은 미국식 요청 시 배제
+                    else:
+                        # [영국식 판별] 옥스퍼드 공식 영국 원어민 음원 매칭
+                        if "/uk/" in u_lower or "pron/new/uk" in u_lower or "_uk_" in u_lower or "uk.mp3" in u_lower:
+                            score += 120
+                        elif "UK" in s_type or "GB" in s_type or "영국" in s_name or s_type == "B":
+                            score += 90
+                        elif not ("/us/" in u_lower or "pron/new/us" in u_lower or "_us_" in u_lower or "us.mp3" in u_lower or "US" in s_type or "미국" in s_name):
+                            score += 30
+                        else:
+                            score -= 80
+
+                    if is_exact:
+                        score += 50
+
+                    candidates.append((score, s_url))
+
+            # 점수 높은 순으로 정렬
+            candidates.sort(key=lambda x: x[0], reverse=True)
+
+            for score, audio_url in candidates:
+                if score < 0:
+                    continue
+                if audio_url.startswith("//"):
+                    audio_url = "https:" + audio_url
+                elif audio_url.startswith("/"):
+                    audio_url = "https://dict-dn.pstatic.net" + audio_url
+                elif audio_url.startswith("http://"):
+                    audio_url = "https://" + audio_url[7:]
+
+                for ref in ["https://en.dict.naver.com/", ""]:
+                    try:
+                        headers = {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        }
+                        if ref:
+                            headers["Referer"] = ref
+                        audio_req = urllib.request.Request(audio_url, headers=headers)
+                        with urllib.request.urlopen(audio_req, context=ssl_ctx, timeout=3.5) as a_resp:
+                            content = a_resp.read()
+                            if len(content) > 300:
+                                return content
+                    except Exception:
+                        pass
+        except Exception:
+            continue
 
     return None
 
 
 def fetch_external_audio(text: str, accent: str = "us") -> Optional[bytes]:
     """
-    네이버 어학사전 공식 음원 기준 실시간 스트리밍
-    - 미국식: 네이버 어학사전 공식 여성 원어민 음원 (Clara)
-    - 영국식: 네이버 어학사전 공식 옥스퍼드 여성 원어민 음원
+    네이버 어학사전 공식 원어민 스튜디오 음원 기준 실시간 스트리밍
+    - 미국식: 네이버 어학사전 공식 미국 원어민 스튜디오 녹음 음원 (1순위)
+    - 영국식: 네이버 어학사전 공식 옥스퍼드 원어민 녹음 음원
     - 호주식: 호주 고유 억양 남성(Male) 원어민 음원
     """
     clean_text = text.strip()
@@ -643,16 +967,59 @@ def fetch_external_audio(text: str, accent: str = "us") -> Optional[bytes]:
         return _AUDIO_CACHE[cache_key]
 
     encoded = urllib.parse.quote(clean_text)
+    ssl_ctx = ssl._create_unverified_context()
 
-    # 1. 미국식(여) / 영국식(여): [네이버 어학사전 공식 원어민 음원] 1순위 파싱 스트리밍
-    if accent.lower() in ["us", "en-us", "gb", "uk", "en-gb"]:
-        naver_dict_data = fetch_naver_dict_audio(clean_text, accent)
-        if naver_dict_data:
-            _AUDIO_CACHE[cache_key] = naver_dict_data
-            return naver_dict_data
+    # 1. 미국식: [네이버 어학사전 공식 미국 원어민 스튜디오 음원] 1순위 파싱 스트리밍
+    if accent.lower() in ["us", "en-us"]:
+        naver_us_data = fetch_naver_dict_audio(clean_text, "us")
+        if naver_us_data:
+            _AUDIO_CACHE[cache_key] = naver_us_data
+            return naver_us_data
 
-    # 2. 호주식: [호주 남성(Male) 원어민 전용 음원]
-    if accent.lower() in ["au", "en-au"]:
+        # 미국식 2순위 고품질 표준 원어민 발음 (된소리/이상한 기계음 nvoice 완전 영구 퇴출)
+        backup_us_urls = [
+            f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-US&q={encoded}",
+            f"https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=en-US&q={encoded}",
+            f"https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=en-US&q={encoded}",
+        ]
+        for u in backup_us_urls:
+            try:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Referer": "https://translate.google.com/"
+                }
+                req = urllib.request.Request(u, headers=headers)
+                with urllib.request.urlopen(req, context=ssl_ctx, timeout=3.5) as resp:
+                    data = resp.read()
+                    if len(data) > 300:
+                        _AUDIO_CACHE[cache_key] = data
+                        return data
+            except Exception:
+                pass
+
+    # 2. 영국식: [네이버 어학사전 옥스퍼드 공식 음원]
+    elif accent.lower() in ["gb", "uk", "en-gb"]:
+        naver_uk_data = fetch_naver_dict_audio(clean_text, "gb")
+        if naver_uk_data:
+            _AUDIO_CACHE[cache_key] = naver_uk_data
+            return naver_uk_data
+
+        url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-GB&q={encoded}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        }
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, context=ssl_ctx, timeout=3.5) as resp:
+                data = resp.read()
+                if len(data) > 300:
+                    _AUDIO_CACHE[cache_key] = data
+                    return data
+        except Exception:
+            pass
+
+    # 3. 호주식: [호주 남성(Male) 원어민 전용 음원]
+    elif accent.lower() in ["au", "en-au"]:
         urls = [
             f"https://code.responsivevoice.org/getvoice.php?t={encoded}&tl=en-AU&pitch=0.46&rate=0.48&vol=1&gender=male",
             f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-AU&q={encoded}"
@@ -660,50 +1027,17 @@ def fetch_external_audio(text: str, accent: str = "us") -> Optional[bytes]:
         for u in urls:
             try:
                 headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                     "Referer": "https://responsivevoice.org/" if "responsivevoice" in u else "https://translate.google.com/"
                 }
                 req = urllib.request.Request(u, headers=headers)
-                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                with urllib.request.urlopen(req, context=ssl_ctx, timeout=3.5) as resp:
                     data = resp.read()
-                    if len(data) > 100:
+                    if len(data) > 300:
                         _AUDIO_CACHE[cache_key] = data
                         return data
-            except Exception as e:
-                print(f"[AU Male Audio Stream Error] {u}: {e}")
-
-    # 3. 미국식(여성): [네이버 nvoice 공식 Clara 여성 음원]
-    elif accent.lower() in ["us", "en-us"]:
-        url = f"https://dict.naver.com/api/nvoice?speaker=clara&speed=0&text={encoded}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://en.dict.naver.com/"
-        }
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                data = resp.read()
-                if len(data) > 100:
-                    _AUDIO_CACHE[cache_key] = data
-                    return data
-        except Exception as e:
-            print(f"[US Female Audio Stream Error] {e}")
-
-    # 4. 영국식(여성): [영국식 여성 표준 음원]
-    elif accent.lower() in ["gb", "uk", "en-gb"]:
-        url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-GB&q={encoded}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                data = resp.read()
-                if len(data) > 100:
-                    _AUDIO_CACHE[cache_key] = data
-                    return data
-        except Exception as e:
-            print(f"[UK Female Audio Stream Error] {e}")
+            except Exception:
+                pass
 
     return None
 
@@ -719,24 +1053,27 @@ async def get_audio_stream(word: str = Query(...), accent: str = Query("us")):
     raise HTTPException(status_code=404, detail="오디오를 불러올 수 없습니다.")
 
 
-# ---------------------------------------------------------------------------
-# [가이드라인 261008 표준] 과목 담당 조원 단독 테스트 실행 블록
-# ---------------------------------------------------------------------------
+# 단독 실행용 FastAPI 인스턴스 (변수명을 반드시 app으로 지정)
+app = FastAPI(title="EduMate AI - 초등영어 단독 테스트 서버")
+app.include_router(router)
+
+@app.get("/")
+async def root_page():
+    return FileResponse(str(HTML_PATH))
+
+
 if __name__ == "__main__":
     import uvicorn
-    from fastapi import FastAPI
     import webbrowser
-
-    # 단독 실행용 FastAPI 인스턴스 (변수명을 반드시 app으로 지정)
-    app = FastAPI(title="EduMate AI - 초등영어 단독 테스트 서버")
-    app.include_router(router)
-
-    @app.get("/")
-    async def root_page():
-        return FileResponse(str(HTML_PATH))
 
     PORT = 8000
     print(f"\n🚀 [초등영어] 로컬 테스트 서버 구동: http://localhost:{PORT}/english/\n")
     webbrowser.open(f"http://localhost:{PORT}/english/")
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=PORT)
+    except OSError:
+        PORT = 8001
+        print(f"\n⚠️ 8000번 포트 사용 중으로 8001번으로 전환: http://localhost:{PORT}/english/\n")
+        webbrowser.open(f"http://localhost:{PORT}/english/")
+        uvicorn.run(app, host="0.0.0.0", port=PORT)
 
