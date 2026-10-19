@@ -2,10 +2,6 @@
 .env
 *.env
 
-# 문서 파일 제외
-*.md
-!README.md
-
 # 개인 연습 폴더 제외
 *practice*
 *practice*/**
