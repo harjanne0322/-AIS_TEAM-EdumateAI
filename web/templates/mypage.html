@@ -810,6 +810,66 @@
     </div>
 
     <!-- ================================================================= -->
+    <!-- 모달: 비회원 마이페이지 접근 차단 및 정식 회원 전환 안내 모달 -->
+    <!-- ================================================================= -->
+    <div id="guestAccessBlockModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-8 max-w-md w-full space-y-5 text-center">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 text-3xl shadow-xs">
+                <i class="fa-solid fa-lock"></i>
+            </div>
+            
+            <div class="space-y-2">
+                <h3 class="text-lg font-black text-slate-900">비회원 마이페이지 접근 제한</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    마이페이지(개인정보 및 학습 기록)는 <strong class="text-blue-600">정식 회원 전용</strong> 서비스입니다.<br>
+                    지금 회원가입을 하시면 비회원 체험 동안 풀이하신 <strong>문제 기록과 누적 점수가 새 계정으로 안전하게 모두 이관</strong>됩니다!
+                </p>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left space-y-3">
+                <div class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sparkles text-amber-500"></i>
+                    <span>정식 회원 즉시 전환</span>
+                </div>
+                <div class="space-y-2">
+                    <input type="text" id="guestConvId" placeholder="사용할 아이디 (2자 이상)"
+                        class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                    <input type="password" id="guestConvPw" placeholder="비밀번호 (4자 이상)"
+                        class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                    <input type="password" id="guestConvPwConf" placeholder="비밀번호 확인"
+                        class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="text" id="guestConvName" placeholder="학생 이름"
+                            class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                        <select id="guestConvGrade"
+                            class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 focus:border-blue-600 focus:outline-none">
+                            <option value="1">1학년</option>
+                            <option value="2">2학년</option>
+                            <option value="3">3학년</option>
+                            <option value="4" selected>4학년</option>
+                            <option value="5">5학년</option>
+                            <option value="6">6학년</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="guestConvErrorMsg" class="hidden text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl"></div>
+            </div>
+
+            <div class="flex items-center gap-2 pt-2">
+                <button type="button" onclick="location.href='/'"
+                    class="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition-all cursor-pointer">
+                    로비로 돌아가기
+                </button>
+                <button type="button" onclick="submitGuestConversion()"
+                    class="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-user-check"></i>
+                    <span>회원가입 및 이관</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
     <!-- 프론트엔드 비즈니스 로직 스크립트 -->
     <!-- ================================================================= -->
     <script>
@@ -1100,6 +1160,24 @@
             }
             const savedPoke = localStorage.getItem("edumate_pokemon_type");
             if (savedPoke && POKEMON_TYPE_CONFIG_JS[savedPoke]) currentPokemonType = savedPoke;
+
+            const isGuest = (!savedId) || (savedId === "guest") || (savedId.startsWith("guest_")) || (savedRole === "guest") || (sessionAcc && (sessionAcc.is_guest || sessionAcc.role === "guest"));
+
+            if (isGuest) {
+                const blockModal = document.getElementById("guestAccessBlockModal");
+                if (blockModal) {
+                    blockModal.classList.remove("hidden");
+                    if (savedName && savedName !== "게스트") {
+                        const nameInp = document.getElementById("guestConvName");
+                        if (nameInp) nameInp.value = savedName;
+                    }
+                    if (sessionAcc && sessionAcc.grade) {
+                        const gradeSel = document.getElementById("guestConvGrade");
+                        if (gradeSel) gradeSel.value = String(sessionAcc.grade);
+                    }
+                }
+                return;
+            }
 
             renderGradeReferenceTable();
             updateHeaderScore();
@@ -3596,9 +3674,94 @@
             loadStudyHistory(currentHistoryFavOnly);
         }
 
-        function handleLogout() {
+        async function submitGuestConversion() {
+            const idVal = document.getElementById("guestConvId").value.trim();
+            const pwVal = document.getElementById("guestConvPw").value.trim();
+            const pwConfVal = document.getElementById("guestConvPwConf").value.trim();
+            const nameVal = sanitizeUserName(document.getElementById("guestConvName").value.trim());
+            const gradeVal = parseInt(document.getElementById("guestConvGrade").value || "4", 10);
+            const errEl = document.getElementById("guestConvErrorMsg");
+
+            if (!idVal || !pwVal || !pwConfVal || !nameVal) {
+                errEl.innerText = "모든 항목을 입력해 주세요.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+            if (idVal.length < 2) {
+                errEl.innerText = "아이디는 2자 이상이어야 합니다.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+            if (pwVal.length < 4) {
+                errEl.innerText = "비밀번호는 4자 이상이어야 합니다.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+            if (pwVal !== pwConfVal) {
+                errEl.innerText = "비밀번호가 일치하지 않습니다.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+
+            const guestSessionId = localStorage.getItem("edumate_guest_session_id") || localStorage.getItem("edumate_math_user_id");
+            const guestIdToSend = (guestSessionId && (guestSessionId.startsWith("guest_") || guestSessionId === "guest")) ? guestSessionId : null;
+
+            try {
+                const res = await fetch("/api/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_id: idVal,
+                        password: pwVal,
+                        password_confirm: pwConfVal,
+                        user_name: nameVal,
+                        grade: gradeVal,
+                        guest_id: guestIdToSend
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === "success" && data.user) {
+                    errEl.classList.add("hidden");
+                    localStorage.removeItem("edumate_guest_session_id");
+                    alert("🎉 정식 회원가입이 완료되었습니다!\n체험 동안 풀이하신 문제와 점수가 새 계정으로 성공적으로 이관되었습니다.");
+                    const acc = {
+                        id: data.user.user_id,
+                        name: sanitizeUserName(data.user.user_name),
+                        grade: data.user.grade || gradeVal,
+                        role: "student",
+                        managed_subjects: [],
+                        managed_subjects_kr: [],
+                        role_display: `초등 ${data.user.grade || gradeVal}학년`
+                    };
+                    localStorage.setItem("edumate_current_account", JSON.stringify(acc));
+                    localStorage.setItem("edumate_math_user_name", acc.name);
+                    localStorage.setItem("edumate_math_user_id", acc.id);
+                    localStorage.setItem("edumate_math_user_role", acc.role);
+                    window.location.reload();
+                } else {
+                    errEl.innerText = data.detail || "회원가입에 실패했습니다.";
+                    errEl.classList.remove("hidden");
+                }
+            } catch(e) {
+                errEl.innerText = "서버 통신 오류: " + e.message;
+                errEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleLogout() {
+            const guestSessionId = localStorage.getItem("edumate_guest_session_id") || localStorage.getItem("edumate_math_user_id");
+            if (guestSessionId && (guestSessionId.startsWith("guest_") || guestSessionId === "guest")) {
+                try {
+                    await fetch("/api/guest/clear", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ guest_id: guestSessionId })
+                    });
+                } catch(e) {}
+            }
             localStorage.removeItem("edumate_current_account");
             localStorage.removeItem("edumate_current_user");
+            localStorage.removeItem("edumate_guest_session_id");
             localStorage.removeItem("edumate_math_user_id");
             localStorage.removeItem("edumate_math_user_name");
             localStorage.removeItem("edumate_math_user_role");

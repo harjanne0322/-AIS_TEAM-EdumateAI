@@ -79,7 +79,7 @@
                 </div>
 
                 <!-- 우측 상단 [개인정보] 바로가기 버튼 (공통 마이페이지로 이동) -->
-                <button type="button" id="btnHeaderHistory" onclick="location.href='/mypage'"
+                <button type="button" id="btnHeaderHistory" onclick="handleMathMypageNavClick()"
                     class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
                     title="내 개인정보 및 문제풀이 로그 조회 (마이페이지)">
                     <i class="fa-solid fa-id-card text-blue-600"></i>
@@ -1994,12 +1994,23 @@
                 const inputEl = document.getElementById("headerUserNameInput");
                 if (inputEl) inputEl.value = savedUserName;
             }
-            if (savedUserId && savedUserId !== "guest") {
+            if (savedUserId && savedUserId !== "guest" && !savedUserId.startsWith("guest_") && savedUserRole !== "guest") {
                 currentUserId = savedUserId;
                 currentUserRole = savedUserRole || "student";
                 isLoggedIn = true;
                 localStorage.setItem("edumate_math_user_id", savedUserId);
                 localStorage.setItem("edumate_math_user_role", currentUserRole);
+            } else {
+                isLoggedIn = false;
+                currentUserRole = "guest";
+                let guestId = (savedUserId && savedUserId.startsWith("guest_")) ? savedUserId : localStorage.getItem("edumate_guest_session_id");
+                if (!guestId || guestId === "guest") {
+                    guestId = "guest_" + Math.random().toString(36).substring(2, 10);
+                }
+                currentUserId = guestId;
+                localStorage.setItem("edumate_guest_session_id", guestId);
+                localStorage.setItem("edumate_math_user_id", guestId);
+                localStorage.setItem("edumate_math_user_role", "guest");
             }
             const savedPokeType = localStorage.getItem("edumate_pokemon_type");
             if (savedPokeType && POKEMON_TYPE_CONFIG_JS[savedPokeType]) {
@@ -2218,7 +2229,17 @@
             }
         }
 
-        function onHeaderAuthClick() {
+        function handleMathMypageNavClick() {
+            if (!isLoggedIn || currentUserId === "guest" || currentUserId.startsWith("guest_") || currentUserRole === "guest") {
+                if (confirm("마이페이지(개인정보 및 학습 기록)는 정식 회원 전용 서비스입니다.\n\n지금 회원가입을 하시면 비회원 체험 동안 풀이하신 문제와 점수가 새 계정으로 안전하게 모두 이관됩니다!\n\n회원가입을 진행하시겠습니까?")) {
+                    window.location.href = "/?tab=register";
+                }
+                return;
+            }
+            window.location.href = "/mypage";
+        }
+
+        async function onHeaderAuthClick() {
             if (isLoggedIn) {
                 // 로그아웃 처리 -> 세션 및 로컬스토리지 전체 정리 후 로그인 첫 화면(/)으로 이동
                 isLoggedIn = false;
@@ -2228,6 +2249,8 @@
                 currentManagedSubjectsKr = [];
                 currentRoleDisplay = "";
                 localStorage.removeItem("edumate_current_account");
+                localStorage.removeItem("edumate_current_user");
+                localStorage.removeItem("edumate_guest_session_id");
                 localStorage.removeItem("edumate_math_user_id");
                 localStorage.removeItem("edumate_math_user_name");
                 localStorage.removeItem("edumate_math_user_role");
@@ -2306,6 +2329,7 @@
                 }
             }
 
+            localStorage.removeItem("edumate_guest_session_id");
             localStorage.setItem("edumate_math_user_name", user.user_name || "김에듀");
             localStorage.setItem("edumate_math_user_id", currentUserId);
             localStorage.setItem("edumate_math_user_role", currentUserRole);

@@ -232,9 +232,16 @@ def save_quiz_log(
     init_db()
     clean_name = (user_name or "김에듀").strip() or "김에듀"
     clean_id = (user_id or kwargs.get("user_id") or "").strip()
-    if grade is not None and 1 <= grade <= 6:
-        _USER_GRADE_CACHE[clean_name] = int(grade)
-    effective_grade = int(grade) if (grade is not None and 1 <= grade <= 6) else _USER_GRADE_CACHE.get(clean_name, 4)
+    grade_val = None
+    if grade is not None:
+        try:
+            g = int(grade)
+            if 1 <= g <= 6:
+                grade_val = g
+                _USER_GRADE_CACHE[clean_name] = g
+        except (ValueError, TypeError):
+            pass
+    effective_grade = grade_val if grade_val is not None else _USER_GRADE_CACHE.get(clean_name, 4)
     now = _now_str()
     effective_quiz_id = quiz_id or f"{SUBJECT_NAME}_{now}_{question[:20]}"
 
