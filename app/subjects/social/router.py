@@ -17,22 +17,28 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, FastAPI
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 # --------------------------------------------------------------------------
 # [가이드라인 추가지시사항 3] .env 안전 계단식 탐색 (다중 폴백 메커니즘)
 # --------------------------------------------------------------------------
 current_dir = Path(__file__).resolve().parent
-parent_dir = current_dir.parent
 
-if (current_dir / ".env").exists():
-    load_dotenv(dotenv_path=current_dir / ".env")
-elif (parent_dir / ".env").exists():
-    load_dotenv(dotenv_path=parent_dir / ".env")
-elif (parent_dir.parent / ".env").exists():
-    load_dotenv(dotenv_path=parent_dir.parent / ".env")
-else:
-    load_dotenv()
+env_found = False
+p = current_dir
+while p != p.parent:
+    if (p / ".env").exists():
+        load_dotenv(dotenv_path=p / ".env")
+        env_found = True
+        break
+    p = p.parent
+
+if not env_found:
+    auto_env = find_dotenv(usecwd=True)
+    if auto_env:
+        load_dotenv(dotenv_path=auto_env)
+    else:
+        load_dotenv()
 
 # --------------------------------------------------------------------------
 # 모듈 임포트 (통합 패키지 환경 및 조원 단독 실행 환경 100% 양방향 호환)
@@ -154,7 +160,7 @@ def call_ai_text(prompt: str, max_tokens: int = 350, temperature: float = 0.2) -
         try:
             client = genai.Client(api_key=gemini_key.strip(), http_options={"api_version": "v1"})
             resp = client.models.generate_content(
-                model="gemini-3.5-flash-lite",
+                model=os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash"),
                 contents=prompt,
             )
             return resp.text.strip()
