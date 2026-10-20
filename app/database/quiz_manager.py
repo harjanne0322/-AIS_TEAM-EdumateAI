@@ -267,14 +267,13 @@ def init_control_db() -> None:
             INSERT INTO accounts (user_id, password, user_name, grade, role, created_at)
             VALUES ('master', '1111', '마스터', 6, 'admin', ?)
             ON CONFLICT(user_id) DO UPDATE SET
-                password = excluded.password,
-                user_name = excluded.user_name,
-                grade = excluded.grade,
-                role = 'admin'
+                role = 'admin',
+                user_name = COALESCE(NULLIF(accounts.user_name, ''), excluded.user_name),
+                password = COALESCE(NULLIF(accounts.password, ''), excluded.password)
             """,
             (now,),
         )
-        cur.execute("UPDATE accounts SET password = '1111' WHERE user_id = 'master' OR role = 'admin'")
+        cur.execute("UPDATE accounts SET password = '1111' WHERE (user_id = 'master' OR role = 'admin') AND (password IS NULL OR password = '')")
 
         # [요청사항 반영] 불필요 테스트 계정 'user_테스트_1792138264' 영구 삭제
         cur.execute("DELETE FROM accounts WHERE user_id = 'user_테스트_1792138264' OR user_name = 'user_테스트_1792138264'")
@@ -622,8 +621,9 @@ def register_account(
     password_confirm: str,
     user_name: str,
     grade: int = 4,
+    guest_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """[일반 학생] 신규 계정 회원가입"""
+    """[일반 학생] 신규 계정 회원가입 (비회원 체험 기록 안전 이관 지원)"""
     init_control_db()
     clean_id = (user_id or "").strip()
     clean_pw = (password or "").strip()
@@ -658,6 +658,22 @@ def register_account(
             (clean_id, clean_pw, clean_name, valid_grade, now),
         )
         conn.commit()
+
+        # 비회원 체험 중 푼 문제 기록이 있는 경우 신규 회원 계정으로 안전 이관
+        migrated_score = 0
+        clean_guest_id = (guest_id or "").strip()
+        if clean_guest_id and clean_guest_id != clean_id:
+            try:
+                cur.execute(
+                    "UPDATE quiz_logs SET user_id = ?, user_name = ? WHERE user_id = ?",
+                    (clean_id, clean_name, clean_guest_id),
+                )
+                conn.commit()
+                cur.execute("SELECT COALESCE(SUM(earned_score), 0) FROM quiz_logs WHERE user_id = ?", (clean_id,))
+                migrated_score = int(cur.fetchone()[0] or 0)
+            except Exception:
+                pass
+
         return {
             "user_id": clean_id,
             "user_name": clean_name,
@@ -666,10 +682,28 @@ def register_account(
             "managed_subjects": [],
             "managed_subjects_kr": [],
             "role_display": "학생 계정",
-            "total_score": 0,
+            "total_score": migrated_score,
             "pokemon_type": "grass",
             "created_at": now,
         }
+    finally:
+        conn.close()
+
+
+def clear_guest_logs(guest_id: str) -> int:
+    """비회원 체험 로그아웃 시 해당 게스트의 임시 문제풀이 기록 증발(삭제)"""
+    init_control_db()
+    clean_id = (guest_id or "").strip()
+    if not clean_id or clean_id in ("master", "admin"):
+        return 0
+    if not (clean_id == "guest" or clean_id.startswith("guest")):
+        return 0
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM quiz_logs WHERE user_id = ?", (clean_id,))
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 
@@ -746,77 +780,108 @@ def login_account(user_id: str, password: str) -> Dict[str, Any]:
 def update_account_profile(
     current_user_id: str,
     current_user_name: str,
-    new_user_id: str,
-    new_password: str,
-    new_user_name: str,
-    new_grade: int,
+    new_user_id: Optional[str] = None,
+    new_password: Optional[str] = None,
+    new_user_name: Optional[str] = None,
+    new_grade: Optional[int] = None,
+    current_password: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """일반 회원 개인정보 변경 및 quiz_logs 동기화"""
+    """일반 회원 및 마스터 관리자의 학생 이름, 비밀번호, 학년 변경 및 quiz_logs 동기화"""
     init_control_db()
     cur_id = (current_user_id or "guest").strip()
     cur_name = _sanitize_name(current_user_name or "김에듀").strip()
-    clean_new_id = (new_user_id or "").strip()
-    clean_new_pw = (new_password or "").strip()
     clean_new_name = _sanitize_name(new_user_name or "").strip()
-    valid_grade = int(new_grade) if (new_grade and 1 <= int(new_grade) <= 6) else 4
+    if not clean_new_name:
+        raise ValueError("변경할 학생 이름을 입력해 주세요.")
 
-    if cur_id in ("master", "1234") or cur_name == "마스터":
-        raise ValueError("관리자(마스터) 계정은 개인정보 변경 대상이 아닙니다.")
-    if clean_new_id in ("master", "1234") or clean_new_name == "마스터":
-        raise ValueError("'master' 또는 '마스터'는 관리자 전용이므로 사용할 수 없습니다.")
-    if not clean_new_id or not clean_new_pw or not clean_new_name:
-        raise ValueError("아이디, 비밀번호, 이름을 모두 입력해 주세요.")
+    is_master_account = (cur_id in ("master", "1234") or cur_name == "마스터")
+
+    if is_master_account:
+        clean_new_id = "master"
+    else:
+        clean_new_id = (new_user_id or cur_id or "").strip()
+        if clean_new_id in ("master", "1234"):
+            raise ValueError("'master'는 관리자 전용 아이디이므로 사용할 수 없습니다.")
+        if clean_new_name == "마스터":
+            raise ValueError("'마스터'는 관리자 전용 이름이므로 사용할 수 없습니다.")
 
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        if clean_new_id != cur_id:
-            cur.execute("SELECT user_id, user_name FROM accounts WHERE user_id = ?", (clean_new_id,))
-            dup = cur.fetchone()
-            if dup and dup["user_name"] != cur_name:
+        cur.execute(
+            "SELECT user_id, user_name, password, grade, role, COALESCE(managed_subjects, '') AS managed_subjects, COALESCE(pokemon_type, 'grass') AS pokemon_type FROM accounts WHERE user_id = ? OR user_name = ? LIMIT 1",
+            (cur_id, cur_name),
+        )
+        existing = cur.fetchone()
+        if not existing:
+            raise ValueError(f"계정 정보를 찾을 수 없습니다. (ID: {cur_id})")
+
+        # 현재 비밀번호 입력 시 검증
+        clean_cur_pw = (current_password or "").strip()
+        if clean_cur_pw and clean_cur_pw != str(existing["password"]).strip():
+            raise ValueError("현재 비밀번호가 일치하지 않습니다.")
+
+        # 타 회원과의 학생 이름 중복 검사
+        if clean_new_name != existing["user_name"]:
+            cur.execute(
+                "SELECT user_id FROM accounts WHERE user_name = ? AND user_id != ?",
+                (clean_new_name, existing["user_id"]),
+            )
+            dup_name = cur.fetchone()
+            if dup_name:
+                raise ValueError(f"'{clean_new_name}' 이름은 이미 다른 회원이 사용 중입니다.")
+
+        # 타 회원과의 아이디 중복 검사 (아이디 변경 시)
+        if clean_new_id != existing["user_id"]:
+            cur.execute("SELECT user_id FROM accounts WHERE user_id = ?", (clean_new_id,))
+            dup_id = cur.fetchone()
+            if dup_id:
                 raise ValueError(f"이미 사용 중인 아이디('{clean_new_id}')입니다.")
 
-        cur.execute("SELECT user_id, role FROM accounts WHERE user_id = ? OR user_name = ? LIMIT 1", (cur_id, cur_name))
-        existing = cur.fetchone()
-        now = _now_str()
+        valid_grade = int(new_grade) if (new_grade and 1 <= int(new_grade) <= 6) else (int(existing["grade"] or (6 if is_master_account else 4)))
+        clean_new_pw = (new_password or "").strip()
+        final_pw = clean_new_pw if clean_new_pw else existing["password"]
+        target_role = existing["role"] or ("admin" if is_master_account else "student")
 
-        if existing:
-            if existing["role"] == "admin":
-                raise ValueError("관리자 계정은 변경할 수 없습니다.")
-            cur.execute(
-                """
-                UPDATE accounts
-                SET user_id = ?, password = ?, user_name = ?, grade = ?
-                WHERE user_id = ?
-                """,
-                (clean_new_id, clean_new_pw, clean_new_name, valid_grade, existing["user_id"]),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO accounts (user_id, password, user_name, grade, role, created_at)
-                VALUES (?, ?, ?, ?, 'student', ?)
-                """,
-                (clean_new_id, clean_new_pw, clean_new_name, valid_grade, now),
-            )
+        cur.execute(
+            """
+            UPDATE accounts
+            SET user_id = ?, password = ?, user_name = ?, grade = ?
+            WHERE user_id = ?
+            """,
+            (clean_new_id, final_pw, clean_new_name, valid_grade, existing["user_id"]),
+        )
 
-        if cur_name != clean_new_name:
+        old_name = existing["user_name"]
+        if old_name != clean_new_name:
             cur.execute(
                 "UPDATE quiz_logs SET user_name = ?, user_id = ?, grade = ? WHERE user_id = ? OR ((user_id IS NULL OR user_id = '') AND user_name = ?)",
-                (clean_new_name, clean_new_id, valid_grade, cur_id, cur_name),
+                (clean_new_name, clean_new_id, valid_grade, existing["user_id"], old_name),
             )
         else:
             cur.execute(
                 "UPDATE quiz_logs SET user_id = ?, grade = ? WHERE user_id = ? OR ((user_id IS NULL OR user_id = '') AND user_name = ?)",
-                (clean_new_id, valid_grade, cur_id, clean_new_name),
+                (clean_new_id, valid_grade, existing["user_id"], clean_new_name),
             )
 
+        if old_name in _USER_POKEMON_TYPE_CACHE:
+            _USER_POKEMON_TYPE_CACHE[clean_new_name] = _USER_POKEMON_TYPE_CACHE.pop(old_name)
+        elif existing["pokemon_type"]:
+            _USER_POKEMON_TYPE_CACHE[clean_new_name] = existing["pokemon_type"]
+        _USER_POKEMON_TYPE_EXPLICIT[clean_new_name] = True
+        _USER_GRADE_CACHE[clean_new_name] = valid_grade
+
         conn.commit()
+
+        m_subjs = parse_managed_subjects(existing["managed_subjects"], role=target_role)
         return {
             "user_id": clean_new_id,
             "user_name": clean_new_name,
             "grade": valid_grade,
-            "role": "student",
+            "role": target_role,
+            "managed_subjects": m_subjs,
+            "managed_subjects_kr": [SUBJECT_CODE_TO_LABEL[c] for c in m_subjs if c in SUBJECT_CODE_TO_LABEL],
+            "role_display": format_role_display(target_role, m_subjs, valid_grade),
         }
     finally:
         conn.close()
@@ -926,12 +991,34 @@ def get_or_create_user(
     clean_name = _sanitize_name(user_name or "김에듀").strip() or "김에듀"
     clean_id = (user_id or "").strip()
 
-    # 비회원 체험(게스트): 아이디가 명시적으로 'guest'이거나, 아이디 없이 이름만 '게스트'/'guest'인 경우
-    if clean_id.lower() == "guest" or (not clean_id and clean_name.lower() in ("게스트", "guest")):
+    # 비회원 체험(게스트): 아이디가 명시적으로 'guest'이거나, 게스트 세션이거나, 아이디 없이 이름만 '게스트'/'guest'인 경우
+    if clean_id.lower() == "guest" or clean_id.lower().startswith("guest_") or (not clean_id and clean_name.lower() in ("게스트", "guest")):
         resolved_grade = int(grade) if (grade and 1 <= int(grade) <= 6) else 4
-        level_info = calculate_level_tier(0, pokemon_type="grass")
+        # 비회원 체험 중 풀이한 임시 누적 점수 및 풀이 수 실시간 반영
+        guest_score = 0
+        solved_count = 0
+        correct_count = 0
+        if clean_id:
+            conn = _get_conn()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT COALESCE(SUM(earned_score), 0), COUNT(*), COALESCE(SUM(is_correct), 0) FROM quiz_logs WHERE user_id = ?",
+                    (clean_id,),
+                )
+                row = cur.fetchone()
+                if row:
+                    guest_score = int(row[0] or 0)
+                    solved_count = int(row[1] or 0)
+                    correct_count = int(row[2] or 0)
+            except Exception:
+                pass
+            finally:
+                conn.close()
+
+        level_info = calculate_level_tier(guest_score, pokemon_type="grass")
         return {
-            "user_id": "guest",
+            "user_id": clean_id or "guest",
             "user_name": clean_name if clean_name.lower() not in ("게스트", "guest") else "게스트",
             "grade": resolved_grade,
             "pokemon_type": "grass",
@@ -940,13 +1027,13 @@ def get_or_create_user(
             "managed_subjects": [],
             "managed_subjects_kr": [],
             "role_display": format_role_display("guest", [], resolved_grade),
-            "subject_score": 0,
-            "math_score": 0,
-            "total_score": 0,
-            "integrated_total_score": 0,
+            "subject_score": guest_score,
+            "math_score": guest_score,
+            "total_score": guest_score,
+            "integrated_total_score": guest_score,
             "level_info": level_info,
-            "solved_count": 0,
-            "correct_count": 0,
+            "solved_count": solved_count,
+            "correct_count": correct_count,
         }
 
     if grade is not None and 1 <= grade <= 6:
@@ -972,9 +1059,13 @@ def get_or_create_user(
 
 
         resolved_user_id = acc_row["user_id"] if acc_row else (clean_id or "guest")
+        if acc_row and acc_row["user_name"]:
+            clean_name = _sanitize_name(acc_row["user_name"])
+
+        is_admin_user = (resolved_user_id == "master" or (acc_row and acc_row["role"] == "admin") or clean_name == "마스터")
 
         if acc_row:
-            db_ptype = acc_row["pokemon_type"] or "grass"
+            db_ptype = acc_row["pokemon_type"] or ("dragon" if is_admin_user else "grass")
             # 모바일 및 타 기기 접속 시 초기값('grass') 전송으로 기존 등록 속성이 덮어써지는 현상 원천 방지
             should_update_ptype = False
             if pokemon_type and pokemon_type in POKEMON_TYPE_CONFIG:
@@ -991,7 +1082,7 @@ def get_or_create_user(
                 _USER_POKEMON_TYPE_CACHE[clean_name] = db_ptype
                 _USER_POKEMON_TYPE_EXPLICIT[clean_name] = True
 
-            if grade is not None and 1 <= grade <= 6 and clean_name != "마스터":
+            if grade is not None and 1 <= grade <= 6 and not is_admin_user:
                 cur.execute("UPDATE accounts SET grade = ? WHERE user_id = ?", (int(grade), acc_row["user_id"]))
             if custom_skin_stage is not None and int(custom_skin_stage) > 0:
                 cur.execute("UPDATE accounts SET custom_skin_stage = ? WHERE user_id = ?", (int(custom_skin_stage), acc_row["user_id"]))
@@ -1018,8 +1109,8 @@ def get_or_create_user(
         row = cur.fetchone()
         db_grade = row["latest_grade"] if (row and row["latest_grade"]) else None
 
-        if clean_name == "마스터":
-            resolved_grade = 6
+        if is_admin_user:
+            resolved_grade = int(acc_row["grade"]) if (acc_row and acc_row["grade"]) else 6
         elif grade is not None and 1 <= grade <= 6:
             resolved_grade = int(grade)
         elif acc_row and acc_row["grade"]:
@@ -1036,7 +1127,7 @@ def get_or_create_user(
 
         # 알(50점 미만)에서 2단계(50점 이상) 진입 시 풀(이상해씨) 고정이 아닌 5대 속성 중 무작위 랜덤 진화!
         # 단, 이미 속성이 명시되었거나 관리자(마스터)인 경우 랜덤 재선택 방지!
-        if integrated_score >= 50 and clean_name != "마스터" and not _USER_POKEMON_TYPE_EXPLICIT.get(clean_name, False):
+        if integrated_score >= 50 and not is_admin_user and not _USER_POKEMON_TYPE_EXPLICIT.get(clean_name, False):
             saved_p = acc_row["pokemon_type"] if acc_row else "grass"
             if saved_p == "grass" and (clean_name not in _USER_POKEMON_TYPE_CACHE or _USER_POKEMON_TYPE_CACHE[clean_name] == "grass"):
                 chosen_random_type = random.choice(["grass", "fire", "water", "electric", "psychic"])
@@ -1065,7 +1156,7 @@ def get_or_create_user(
         math_score_row = cur.fetchone()
         math_score = int(math_score_row[0] or 0) if math_score_row else 0
 
-        resolved_role = acc_row["role"] if acc_row else ("admin" if clean_name == "마스터" else "student")
+        resolved_role = acc_row["role"] if acc_row else ("admin" if is_admin_user else "student")
         raw_ms = acc_row["managed_subjects"] if acc_row else ""
         ms_codes = ALL_SUBJECT_CODES[:] if resolved_role == "admin" else parse_managed_subjects(raw_ms)
         ms_labels = [SUBJECT_CODE_TO_LABEL[c] for c in ms_codes if c in SUBJECT_CODE_TO_LABEL]

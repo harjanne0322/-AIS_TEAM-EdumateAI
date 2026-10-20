@@ -79,7 +79,7 @@
                 </div>
 
                 <!-- 우측 상단 [개인정보] 바로가기 버튼 (공통 마이페이지로 이동) -->
-                <button type="button" id="btnHeaderHistory" onclick="location.href='/mypage'"
+                <button type="button" id="btnHeaderHistory" onclick="handleMathMypageNavClick()"
                     class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
                     title="내 개인정보 및 문제풀이 로그 조회 (마이페이지)">
                     <i class="fa-solid fa-id-card text-blue-600"></i>
@@ -127,15 +127,18 @@
                 </div>
 
                 <!-- AI 기반 출제 토글 스위치 (ON: AI 실시간 출제 / OFF: 문제은행 DB 출제) -->
-                <div class="flex items-center gap-3 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200 self-start sm:self-auto">
+                <div id="aiModeToggleCard" onclick="toggleAiGenerationMode()" role="button" tabindex="0"
+                    onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleAiGenerationMode(); }"
+                    class="flex items-center gap-3.5 bg-blue-50/70 hover:bg-blue-100/70 px-4 py-2.5 rounded-2xl border border-blue-200 transition-all cursor-pointer select-none self-start sm:self-auto shadow-2xs group"
+                    title="클릭하여 AI 기반 실시간 출제 / 문제은행 DB 출제 모드를 전환합니다">
                     <div class="text-right">
                         <div class="flex items-center justify-end gap-1.5">
-                            <span id="aiModeToggleLabel" class="text-xs font-extrabold text-blue-700">🤖 AI 기반 출제</span>
-                            <span id="aiModeStatusPill" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200">ON</span>
+                            <span id="aiModeToggleLabel" class="text-xs font-extrabold text-blue-700 transition-colors">🤖 AI 기반 출제</span>
+                            <span id="aiModeStatusPill" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white shadow-xs transition-colors">ON</span>
                         </div>
-                        <p id="aiModeSubDesc" class="text-[11px] text-slate-500 font-medium">OFF 시 문제은행 DB 문제로 출제됩니다</p>
+                        <p id="aiModeSubDesc" class="text-[11px] text-slate-500 font-medium transition-colors">OFF 시 문제은행 DB 문제로 출제됩니다</p>
                     </div>
-                    <button type="button" id="btnToggleAiMode" onclick="toggleAiGenerationMode()" role="switch" aria-checked="true"
+                    <button type="button" id="btnToggleAiMode" onclick="event.stopPropagation(); toggleAiGenerationMode()" role="switch" aria-checked="true"
                         class="relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner"
                         title="AI 기반 출제 ON / 문제은행 출제 OFF 전환">
                         <span id="btnToggleAiModeKnob"
@@ -1864,13 +1867,13 @@
         }
 
         function isSubAdminOrHigher() {
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             if (isMaster) return true;
             return currentUserRole === "sub_admin" && Array.isArray(currentManagedSubjects) && currentManagedSubjects.length > 0;
         }
 
         function canManageSubject(subjectRaw) {
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             if (isMaster) return true;
             if (currentUserRole !== "sub_admin") return false;
             const code = normalizeSubjectCodeJS(subjectRaw);
@@ -1975,6 +1978,10 @@
                 savedUserName = sanitizeUserName(sessionAcc.name || sessionAcc.user_name || "김에듀");
                 savedUserId = sessionAcc.id || sessionAcc.user_id || "";
                 savedUserRole = sessionAcc.role || "student";
+                if (sessionAcc.grade) currentUserGrade = parseInt(sessionAcc.grade, 10) || 4;
+                if (Array.isArray(sessionAcc.managed_subjects)) currentManagedSubjects = sessionAcc.managed_subjects;
+                if (Array.isArray(sessionAcc.managed_subjects_kr)) currentManagedSubjectsKr = sessionAcc.managed_subjects_kr;
+                if (sessionAcc.role_display) currentRoleDisplay = sessionAcc.role_display;
             } else {
                 const rawSavedUserName = localStorage.getItem("edumate_math_user_name");
                 savedUserName = sanitizeUserName(rawSavedUserName);
@@ -1987,12 +1994,23 @@
                 const inputEl = document.getElementById("headerUserNameInput");
                 if (inputEl) inputEl.value = savedUserName;
             }
-            if (savedUserId && savedUserId !== "guest") {
+            if (savedUserId && savedUserId !== "guest" && !savedUserId.startsWith("guest_") && savedUserRole !== "guest") {
                 currentUserId = savedUserId;
                 currentUserRole = savedUserRole || "student";
                 isLoggedIn = true;
                 localStorage.setItem("edumate_math_user_id", savedUserId);
                 localStorage.setItem("edumate_math_user_role", currentUserRole);
+            } else {
+                isLoggedIn = false;
+                currentUserRole = "guest";
+                let guestId = (savedUserId && savedUserId.startsWith("guest_")) ? savedUserId : localStorage.getItem("edumate_guest_session_id");
+                if (!guestId || guestId === "guest") {
+                    guestId = "guest_" + Math.random().toString(36).substring(2, 10);
+                }
+                currentUserId = guestId;
+                localStorage.setItem("edumate_guest_session_id", guestId);
+                localStorage.setItem("edumate_math_user_id", guestId);
+                localStorage.setItem("edumate_math_user_role", "guest");
             }
             const savedPokeType = localStorage.getItem("edumate_pokemon_type");
             if (savedPokeType && POKEMON_TYPE_CONFIG_JS[savedPokeType]) {
@@ -2004,6 +2022,10 @@
                 onDifficultyChange();
                 onQuestionTypeChange();
             } catch (e) {}
+
+            // 헤더 및 인증 UI 즉시 반영 (비동기 DB 조회 완료 전이라도 회원 정보 및 레벨 즉시 표출)
+            updateAuthUI();
+            updateHeaderScore();
 
             // 1) SQLite 통합 DB(quiz_logs)에서 학생 학년 및 영구 누적 총점 불러오기
             try {
@@ -2041,7 +2063,7 @@
             currentUserGrade = parseInt(grade, 10) || 4;
             const el = document.getElementById("headerUserGrade");
             if (!el) return;
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             if (isMaster) {
                 el.textContent = "총 관리자";
             } else if (currentUserRole === "sub_admin" && currentManagedSubjectsKr.length > 0) {
@@ -2068,14 +2090,22 @@
             const qbankPanel = document.getElementById("profileQuestionBankSection");
             const profileEditSection = document.getElementById("profileEditSection");
 
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             const isSubAdmin = (currentUserRole === "sub_admin" && currentManagedSubjects.length > 0);
 
             if (isMaster) {
                 currentUserRole = "admin";
                 if (btnAdminInsideProfile) btnAdminInsideProfile.classList.remove("hidden");
                 if (btnQbankInsideProfile) btnQbankInsideProfile.classList.remove("hidden");
-                if (profileEditSection) profileEditSection.classList.add("hidden");
+                if (profileEditSection) {
+                    profileEditSection.classList.remove("hidden");
+                    const editId = document.getElementById("editUserId");
+                    const editName = document.getElementById("editUserName");
+                    const editGrade = document.getElementById("editUserGrade");
+                    if (editId) editId.value = (currentUserId && currentUserId !== "guest") ? currentUserId : "master";
+                    if (editName) editName.value = getCurrentUserName();
+                    if (editGrade) editGrade.value = String(getCurrentUserGrade());
+                }
             } else {
                 if (btnAdminInsideProfile) btnAdminInsideProfile.classList.add("hidden");
                 if (isSubAdmin) {
@@ -2199,7 +2229,17 @@
             }
         }
 
-        function onHeaderAuthClick() {
+        function handleMathMypageNavClick() {
+            if (!isLoggedIn || currentUserId === "guest" || currentUserId.startsWith("guest_") || currentUserRole === "guest") {
+                if (confirm("마이페이지(개인정보 및 학습 기록)는 정식 회원 전용 서비스입니다.\n\n지금 회원가입을 하시면 비회원 체험 동안 풀이하신 문제와 점수가 새 계정으로 안전하게 모두 이관됩니다!\n\n회원가입을 진행하시겠습니까?")) {
+                    window.location.href = "/?tab=register";
+                }
+                return;
+            }
+            window.location.href = "/mypage";
+        }
+
+        async function onHeaderAuthClick() {
             if (isLoggedIn) {
                 // 로그아웃 처리 -> 세션 및 로컬스토리지 전체 정리 후 로그인 첫 화면(/)으로 이동
                 isLoggedIn = false;
@@ -2209,6 +2249,8 @@
                 currentManagedSubjectsKr = [];
                 currentRoleDisplay = "";
                 localStorage.removeItem("edumate_current_account");
+                localStorage.removeItem("edumate_current_user");
+                localStorage.removeItem("edumate_guest_session_id");
                 localStorage.removeItem("edumate_math_user_id");
                 localStorage.removeItem("edumate_math_user_name");
                 localStorage.removeItem("edumate_math_user_role");
@@ -2264,7 +2306,7 @@
         function applyUserSession(user) {
             isLoggedIn = true;
             currentUserId = user.user_id || "guest";
-            currentUserRole = user.role || (user.user_name === "마스터" ? "admin" : "student");
+            currentUserRole = user.role || (user.user_id === "master" || user.user_name === "마스터" ? "admin" : "student");
             currentManagedSubjects = Array.isArray(user.managed_subjects) ? user.managed_subjects : [];
             currentManagedSubjectsKr = Array.isArray(user.managed_subjects_kr) ? user.managed_subjects_kr : [];
             currentRoleDisplay = user.role_display || "";
@@ -2287,6 +2329,7 @@
                 }
             }
 
+            localStorage.removeItem("edumate_guest_session_id");
             localStorage.setItem("edumate_math_user_name", user.user_name || "김에듀");
             localStorage.setItem("edumate_math_user_id", currentUserId);
             localStorage.setItem("edumate_math_user_role", currentUserRole);
@@ -2528,7 +2571,7 @@
             const badgeEl = document.getElementById("qbankPermittedSubjectsBadge");
             if (!subjSelect) return;
 
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             const allowedCodes = isMaster
                 ? SUBJECT_ORDER_CODES.slice()
                 : (qbankMetaCache.user_permission?.allowed_subjects || currentManagedSubjects || []);
@@ -2975,6 +3018,48 @@
             }
         }
 
+        // 구형 로그 중 지문 끝에 [위에서 본 모양에 수를 쓴 모양] 텍스트가 합쳐져 있는 경우 2D 격자 및 방향 복원
+        function extractVisualMetaFromQuestionText(qText) {
+            if (!qText) return { cleanQuestion: "", synthVisual: null, dirFooter: "" };
+            let cleanQuestion = qText;
+            let synthVisual = null;
+            let dirFooter = "";
+
+            const blockRegex = /\[\s*위에서\s*본\s*모양에?\s*(?:수를?\s*쓴\s*모양|수\s*표기|수\s*적은\s*모양)?\s*\]\s*([\s\d\r\n]+)/;
+            const match = cleanQuestion.match(blockRegex);
+            if (match) {
+                const rawBlock = match[1].trim();
+                const lines = rawBlock.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                const grid2d = [];
+                for (const line of lines) {
+                    const nums = line.match(/\d+/g);
+                    if (nums && nums.length > 0) {
+                        grid2d.push(nums.map(n => parseInt(n, 10)));
+                    }
+                }
+                if (grid2d.length > 0) {
+                    const maxC = Math.max(...grid2d.map(r => r.length));
+                    grid2d.forEach(r => {
+                        while (r.length < maxC) r.push(0);
+                    });
+                    synthVisual = {
+                        type: "grid",
+                        rows: grid2d,
+                        label: "위에서 본 모양 (수 표기)",
+                        title: "위에서 본 모양 (수 표기)"
+                    };
+                    cleanQuestion = cleanQuestion.substring(0, match.index).trim();
+                }
+            }
+
+            if (/옆|오른쪽/.test(cleanQuestion)) {
+                dirFooter = "앞 ◀ ▶ 뒤";
+            } else if (/앞/.test(cleanQuestion)) {
+                dirFooter = "왼쪽 ◀ ▶ 오른쪽";
+            }
+            return { cleanQuestion, synthVisual, dirFooter };
+        }
+
         async function loadQuestionBankList() {
             const container = document.getElementById("qbankItemsListContainer");
             const countBadge = document.getElementById("qbankTotalCountBadge");
@@ -2998,14 +3083,38 @@
                         return;
                     }
 
+                    const pendingCharts = [];
                     container.innerHTML = items.map(item => {
                         const badgeInfo = getSubjectBadgeInfo(item.subject);
                         const sourceBadge = item.source_type === "ai_log"
                             ? `<span class="px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">AI 출제 로그 저장</span>`
                             : `<span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">수동 등록</span>`;
+
+                        const meta = extractVisualMetaFromQuestionText(item.question_text);
+                        const cleanQuestion = meta.cleanQuestion || item.question_text || "";
+                        const effectiveDirFooter = item.direction_footer || meta.dirFooter || "";
+                        const effectiveVisualData = (item.visual_data && item.visual_data.type && item.visual_data.type !== "none")
+                            ? item.visual_data
+                            : meta.synthVisual;
+
+                        let visualHtml = "";
+                        if (typeof renderHistoryVisualHtml === "function" && effectiveVisualData) {
+                            const vRes = renderHistoryVisualHtml(effectiveVisualData, cleanQuestion, `qbank_${item.id}`);
+                            if (vRes) {
+                                visualHtml = vRes.html || "";
+                                if (Array.isArray(vRes.initCharts)) {
+                                    pendingCharts.push(...vRes.initCharts);
+                                }
+                            }
+                        }
+
                         const choicesText = (Array.isArray(item.choices) && item.choices.length > 0 && item.question_type === "객관식")
-                            ? `<div class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200">보기: ${item.choices.map((c, i) => `(${i + 1}) ${c}`).join(" / ")}</div>`
+                            ? `<div class="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 leading-relaxed font-semibold">보기: ${item.choices.map((c, i) => `(${i + 1}) ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(c, false) : c}`).join(" / ")}</div>`
                             : "";
+
+                        const corrGridHtml = (typeof renderMiniColoringGridHtml === "function")
+                            ? renderMiniColoringGridHtml(item.correct_answer, effectiveDirFooter)
+                            : null;
 
                         return `
                             <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all space-y-2">
@@ -3027,15 +3136,28 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="text-xs font-bold text-slate-900 whitespace-pre-wrap leading-relaxed">${item.question_text}</div>
+                                <div class="text-xs font-bold text-slate-900 whitespace-pre-wrap leading-relaxed">${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(cleanQuestion, false) : cleanQuestion}</div>
+                                ${visualHtml ? `<div class="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200 my-1">${visualHtml}</div>` : ''}
                                 ${choicesText}
                                 <div class="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
-                                    <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답: ${item.correct_answer}</span>
-                                    ${item.explanation ? `<span class="text-slate-500 text-[11px] truncate max-w-md">해설: ${item.explanation}</span>` : ''}
+                                    ${corrGridHtml ? `
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답 (색칠 모양)</span>
+                                            <div class="inline-block align-middle">${corrGridHtml}</div>
+                                        </div>
+                                    ` : `
+                                        <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답: ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(item.correct_answer, true) : item.correct_answer}</span>
+                                    `}
+                                    ${item.explanation ? `<span class="text-slate-500 text-[11px] truncate max-w-md">해설: ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(item.explanation, false) : item.explanation}</span>` : ''}
                                 </div>
                             </div>
                         `;
                     }).join("");
+
+                    pendingCharts.forEach(fn => { try { fn(); } catch(e){} });
+                    if (typeof renderLatex === "function") {
+                        renderLatex(container);
+                    }
                 }
             } catch (err) {
                 console.error("문제은행 목록 로드 오류:", err);
@@ -3342,7 +3464,6 @@
         // DB에서 학생 프로필(학년, 누적 총점, 포켓몬 속성, 부관리자 권한) 조회
         async function loadUserProfileFromDB() {
             const userName = getCurrentUserName();
-            localStorage.setItem("edumate_math_user_name", userName);
             try {
                 // 단순 조회(GET) 시에는 클라이언트 기본값으로 서버 DB를 덮어쓰지 않도록 파라미터 제외 (user_id 동반 전송으로 정확한 세션 조회)
                 const res = await fetch(`/math/user?user_name=${encodeURIComponent(userName)}&user_id=${encodeURIComponent(currentUserId || '')}`);
@@ -3353,9 +3474,18 @@
                         isLoggedIn = true;
                     }
                     if (data.user.user_name) {
+                        const cleanUName = sanitizeUserName(data.user.user_name);
                         const inputEl = document.getElementById("headerUserNameInput");
-                        if (inputEl) inputEl.value = data.user.user_name;
-                        localStorage.setItem("edumate_math_user_name", data.user.user_name);
+                        if (inputEl) inputEl.value = cleanUName;
+                        localStorage.setItem("edumate_math_user_name", cleanUName);
+                        try {
+                            const rawAcc = localStorage.getItem("edumate_current_account");
+                            const accObj = rawAcc ? JSON.parse(rawAcc) : {};
+                            accObj.id = currentUserId;
+                            accObj.name = cleanUName;
+                            if (data.user.role) accObj.role = data.user.role;
+                            localStorage.setItem("edumate_current_account", JSON.stringify(accObj));
+                        } catch(e) {}
                     }
                     if (data.user.role) {
                         currentUserRole = data.user.role;
@@ -3565,8 +3695,8 @@
                     `/math/question-bank/unit-stats?user_id=${encodeURIComponent(currentUserId || '')}&user_name=${encodeURIComponent(getCurrentUserName())}&grade_group=${encodeURIComponent(targetGroup)}`
                 );
                 const data = await res.json();
-                if (data.status === "success" && data.stats) {
-                    unitBankStatsCache = data.stats;
+                if (data.status === "success") {
+                    unitBankStatsCache = data.stats || data.bank_stats || data;
                     refreshUnitAndTopicOptionLabels();
                     updateUnitBankStatusBadge();
                 }
@@ -3581,6 +3711,7 @@
 
         async function setAiGenerationMode(enableAi, autoSwitchMessage = "") {
             isAiGenerationMode = Boolean(enableAi);
+            const card = document.getElementById("aiModeToggleCard");
             const btnToggle = document.getElementById("btnToggleAiMode");
             const knob = document.getElementById("btnToggleAiModeKnob");
             const label = document.getElementById("aiModeToggleLabel");
@@ -3591,6 +3722,9 @@
             const bannerText = document.getElementById("aiAutoSwitchBannerText");
 
             if (isAiGenerationMode) {
+                if (card) {
+                    card.className = "flex items-center gap-3.5 bg-blue-50/70 hover:bg-blue-100/70 px-4 py-2.5 rounded-2xl border border-blue-200 transition-all cursor-pointer select-none self-start sm:self-auto shadow-2xs group";
+                }
                 if (btnToggle) {
                     btnToggle.className = "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner";
                     btnToggle.setAttribute("aria-checked", "true");
@@ -3600,11 +3734,11 @@
                 }
                 if (label) {
                     label.innerText = "🤖 AI 기반 출제";
-                    label.className = "text-xs font-extrabold text-blue-700";
+                    label.className = "text-xs font-extrabold text-blue-700 transition-colors";
                 }
                 if (pill) {
                     pill.innerText = "ON";
-                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200";
+                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white shadow-xs transition-colors";
                 }
                 if (subDesc) {
                     subDesc.innerText = "OFF 시 문제은행 DB 문제로 출제됩니다";
@@ -3619,6 +3753,9 @@
                     banner.classList.add("hidden");
                 }
             } else {
+                if (card) {
+                    card.className = "flex items-center gap-3.5 bg-emerald-50/70 hover:bg-emerald-100/70 px-4 py-2.5 rounded-2xl border border-emerald-300 transition-all cursor-pointer select-none self-start sm:self-auto shadow-2xs group";
+                }
                 if (autoSwitchMessage && banner && bannerText) {
                     bannerText.innerText = autoSwitchMessage;
                     banner.classList.remove("hidden");
@@ -3634,11 +3771,11 @@
                 }
                 if (label) {
                     label.innerText = "📚 문제은행 출제 (AI OFF)";
-                    label.className = "text-xs font-extrabold text-emerald-700";
+                    label.className = "text-xs font-extrabold text-emerald-700 transition-colors";
                 }
                 if (pill) {
                     pill.innerText = "OFF (문제은행)";
-                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300";
+                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-xs transition-colors";
                 }
                 if (subDesc) {
                     subDesc.innerText = "단원별 (맞춘 문제/전체 은행문제) 현황이 표시됩니다";
@@ -3662,13 +3799,16 @@
             if (!unitBankStatsCache) return { total: 0, solved: 0, remaining: 0 };
             const activeGroup = currentMode === "custom" ? getGradeGroupByStudentGrade(getCurrentUserGrade()) : currentMode;
             if (!unitValue || unitValue === "랜덤") {
-                if (unitBankStatsCache.by_grade_group && unitBankStatsCache.by_grade_group[activeGroup]) {
-                    return unitBankStatsCache.by_grade_group[activeGroup];
+                if (activeGroup && unitBankStatsCache.by_grade_group) {
+                    return unitBankStatsCache.by_grade_group[activeGroup] || { total: 0, solved: 0, remaining: 0 };
                 }
                 return unitBankStatsCache.overall || { total: 0, solved: 0, remaining: 0 };
             }
-            if (unitBankStatsCache.by_unit && unitBankStatsCache.by_unit[activeGroup] && unitBankStatsCache.by_unit[activeGroup][unitValue]) {
-                return unitBankStatsCache.by_unit[activeGroup][unitValue];
+            if (unitBankStatsCache.by_unit && activeGroup && unitBankStatsCache.by_unit[activeGroup]) {
+                if (unitBankStatsCache.by_unit[activeGroup][unitValue]) {
+                    return unitBankStatsCache.by_unit[activeGroup][unitValue];
+                }
+                return { total: 0, solved: 0, remaining: 0 };
             }
             if (unitBankStatsCache.by_unit_flat && unitBankStatsCache.by_unit_flat[unitValue]) {
                 return unitBankStatsCache.by_unit_flat[unitValue];
@@ -3684,11 +3824,11 @@
             }
             if (
                 unitBankStatsCache.by_topic &&
+                activeGroup &&
                 unitBankStatsCache.by_topic[activeGroup] &&
-                unitBankStatsCache.by_topic[activeGroup][unitValue] &&
-                unitBankStatsCache.by_topic[activeGroup][unitValue][topicValue]
+                unitBankStatsCache.by_topic[activeGroup][unitValue]
             ) {
-                return unitBankStatsCache.by_topic[activeGroup][unitValue][topicValue];
+                return unitBankStatsCache.by_topic[activeGroup][unitValue][topicValue] || { total: 0, solved: 0, remaining: 0 };
             }
             const key = `${unitValue}|||${topicValue}`;
             return (unitBankStatsCache.topics && unitBankStatsCache.topics[key]) || { total: 0, solved: 0, remaining: 0 };
@@ -6420,21 +6560,6 @@
 
                 listEl.appendChild(card);
             });
-
-            renderLatex(listEl);
-
-            // 이미 펼쳐진 상태로 렌더링된 카드들의 차트 초기화
-            expandedHistoryCardIds.forEach(logId => {
-                const inits = window._historyChartInitMap[logId];
-                if (Array.isArray(inits) && inits.length > 0) {
-                    setTimeout(() => {
-                        inits.forEach(fn => {
-                            try { fn(); } catch (e) { console.error("차트 렌더 실패:", e); }
-                        });
-                    }, 50);
-                }
-            });
-        }
 
             renderLatex(listEl);
 

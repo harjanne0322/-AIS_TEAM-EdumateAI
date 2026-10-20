@@ -40,7 +40,7 @@
                         title="학생 이름 (고정)">
                 </div>
                 <!-- 상단 헤더 [개인정보] 바로가기 버튼 (독립된 공통 마이페이지로 즉시 이동) -->
-                <button type="button" id="btnHeaderHistory" onclick="location.href='/mypage'"
+                <button type="button" id="btnHeaderHistory" onclick="handleMypageNavClick()"
                     class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
                     title="내 개인정보 및 문제풀이 로그 조회">
                     <i class="fa-solid fa-id-card text-blue-600"></i>
@@ -588,6 +588,9 @@
                 return;
             }
 
+            const guestSessionId = localStorage.getItem("edumate_guest_session_id") || localStorage.getItem("edumate_math_user_id");
+            const guestIdToSend = (guestSessionId && (guestSessionId.startsWith("guest_") || guestSessionId === "guest")) ? guestSessionId : null;
+
             try {
                 const res = await fetch("/api/register", {
                     method: "POST",
@@ -597,13 +600,15 @@
                         password: pwVal,
                         password_confirm: pwConfVal,
                         user_name: nameVal,
-                        grade: gradeVal
+                        grade: gradeVal,
+                        guest_id: guestIdToSend
                     })
                 });
                 const data = await res.json();
                 if (res.ok && data.status === "success" && data.user) {
                     errEl.classList.add("hidden");
-                    alert("🎉 회원가입이 완료되었습니다! 가입하신 계정으로 바로 입장합니다.");
+                    localStorage.removeItem("edumate_guest_session_id");
+                    alert("🎉 회원가입이 완료되었습니다! 가입하신 계정으로 바로 입장하며, 체험 기록이 안전하게 이관되었습니다.");
                     const acc = {
                         id: data.user.user_id,
                         name: sanitizeUserName(data.user.user_name),
@@ -629,11 +634,36 @@
             const rawName = document.getElementById("quickNameInput").value.trim();
             const nameVal = sanitizeUserName(rawName || "게스트");
             const gradeVal = parseInt(document.getElementById("quickGradeSelect").value || "4", 10);
-            const acc = { id: "guest", name: nameVal, grade: gradeVal, role: "guest", is_guest: true, managed_subjects: [], managed_subjects_kr: [], role_display: "비회원 체험" };
+            const guestId = "guest_" + Math.random().toString(36).substring(2, 10);
+            localStorage.setItem("edumate_guest_session_id", guestId);
+            const acc = { id: guestId, name: nameVal, grade: gradeVal, role: "guest", is_guest: true, managed_subjects: [], managed_subjects_kr: [], role_display: "비회원 체험" };
             saveAccountSession(acc);
             enterLobby(acc);
         }
 
+        function handleMypageNavClick() {
+            const acc = getCurrentAccount();
+            const userId = (acc && (acc.id || acc.user_id)) || localStorage.getItem("edumate_math_user_id") || "";
+            const isGuest = (acc && (acc.is_guest || acc.role === "guest")) || (userId === "guest") || (userId.startsWith("guest_")) || (!userId);
+
+            if (isGuest) {
+                if (confirm("마이페이지(개인정보 및 학습 기록)는 정식 회원 전용 서비스입니다.\n\n지금 회원가입을 하시면 비회원 체험 동안 풀이하신 문제와 점수가 새 계정으로 안전하게 모두 이관됩니다!\n\n회원가입을 진행하시겠습니까?")) {
+                    document.getElementById("lobbySection").classList.add("hidden");
+                    document.getElementById("loginSection").classList.remove("hidden");
+                    switchAuthTab("register");
+                    if (acc && acc.name && acc.name !== "게스트") {
+                        const nameInp = document.getElementById("regNameInput");
+                        if (nameInp) nameInp.value = acc.name;
+                    }
+                    if (acc && acc.grade) {
+                        const gradeSel = document.getElementById("regGradeSelect");
+                        if (gradeSel) gradeSel.value = String(acc.grade);
+                    }
+                }
+                return;
+            }
+            location.href = '/mypage';
+        }
 
         function saveAccountSession(acc) {
             acc.name = sanitizeUserName(acc.name);
@@ -643,8 +673,19 @@
             localStorage.setItem("edumate_math_user_role", acc.role || "student");
         }
 
-        function handleLogout() {
+        async function handleLogout() {
+            const guestSessionId = localStorage.getItem("edumate_guest_session_id") || localStorage.getItem("edumate_math_user_id");
+            if (guestSessionId && (guestSessionId.startsWith("guest_") || guestSessionId === "guest")) {
+                try {
+                    await fetch("/api/guest/clear", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ guest_id: guestSessionId })
+                    });
+                } catch(e) {}
+            }
             localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+            localStorage.removeItem("edumate_guest_session_id");
             localStorage.removeItem("edumate_math_user_id");
             localStorage.removeItem("edumate_math_user_name");
             localStorage.removeItem("edumate_math_user_role");
@@ -686,6 +727,14 @@
                 const data = await res.json();
                 if (data.status === "success" && data.user) {
                     currentTotalScore = data.user.total_score ?? 0;
+                    if (data.user.user_name) {
+                        acc.name = sanitizeUserName(data.user.user_name);
+                        const hdrName = document.getElementById("headerUserName");
+                        if (hdrName) hdrName.value = acc.name;
+                        const welName = document.getElementById("lobbyWelcomeName");
+                        if (welName) welName.innerText = acc.name;
+                        localStorage.setItem("edumate_math_user_name", acc.name);
+                    }
                     if (data.user.grade) {
                         acc.grade = data.user.grade;
                     }
@@ -878,9 +927,24 @@
         }
 
         window.addEventListener("DOMContentLoaded", () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tabParam = urlParams.get("tab");
+
             const acc = getCurrentAccount();
-            if (acc) {
+            if (acc && tabParam !== "register") {
                 enterLobby(acc);
+            } else if (tabParam === "register") {
+                document.getElementById("lobbySection").classList.add("hidden");
+                document.getElementById("loginSection").classList.remove("hidden");
+                switchAuthTab("register");
+                if (acc && acc.name && acc.name !== "게스트") {
+                    const nameInp = document.getElementById("regNameInput");
+                    if (nameInp) nameInp.value = acc.name;
+                }
+                if (acc && acc.grade) {
+                    const gradeSel = document.getElementById("regGradeSelect");
+                    if (gradeSel) gradeSel.value = String(acc.grade);
+                }
             }
             loadLobbyRanking();
             // 5분(300,000ms)마다 랭킹 자동 갱신

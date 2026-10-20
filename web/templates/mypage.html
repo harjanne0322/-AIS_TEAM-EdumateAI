@@ -264,9 +264,9 @@
                 <div>
                     <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <i class="fa-solid fa-user-gear text-blue-600"></i>
-                        <span>회원 정보 직접 변경 (비밀번호 / 이름 / 학년)</span>
+                        <span>회원 정보 변경</span>
                     </h3>
-                    <p class="text-xs text-slate-500">본인의 이름, 학년, 비밀번호를 직접 안전하게 변경할 수 있습니다.</p>
+                    <p class="text-xs text-slate-500">본인의 학생 이름, 학년, 비밀번호를 직접 안전하게 변경할 수 있습니다. (총 관리자 계정도 학생 이름 변경 가능)</p>
                 </div>
             </div>
 
@@ -810,6 +810,66 @@
     </div>
 
     <!-- ================================================================= -->
+    <!-- 모달: 비회원 마이페이지 접근 차단 및 정식 회원 전환 안내 모달 -->
+    <!-- ================================================================= -->
+    <div id="guestAccessBlockModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-8 max-w-md w-full space-y-5 text-center">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 text-3xl shadow-xs">
+                <i class="fa-solid fa-lock"></i>
+            </div>
+            
+            <div class="space-y-2">
+                <h3 class="text-lg font-black text-slate-900">비회원 마이페이지 접근 제한</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    마이페이지(개인정보 및 학습 기록)는 <strong class="text-blue-600">정식 회원 전용</strong> 서비스입니다.<br>
+                    지금 회원가입을 하시면 비회원 체험 동안 풀이하신 <strong>문제 기록과 누적 점수가 새 계정으로 안전하게 모두 이관</strong>됩니다!
+                </p>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left space-y-3">
+                <div class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sparkles text-amber-500"></i>
+                    <span>정식 회원 즉시 전환</span>
+                </div>
+                <div class="space-y-2">
+                    <input type="text" id="guestConvId" placeholder="사용할 아이디 (2자 이상)"
+                        class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                    <input type="password" id="guestConvPw" placeholder="비밀번호 (4자 이상)"
+                        class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                    <input type="password" id="guestConvPwConf" placeholder="비밀번호 확인"
+                        class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="text" id="guestConvName" placeholder="학생 이름"
+                            class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:border-blue-600 focus:outline-none">
+                        <select id="guestConvGrade"
+                            class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 focus:border-blue-600 focus:outline-none">
+                            <option value="1">1학년</option>
+                            <option value="2">2학년</option>
+                            <option value="3">3학년</option>
+                            <option value="4" selected>4학년</option>
+                            <option value="5">5학년</option>
+                            <option value="6">6학년</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="guestConvErrorMsg" class="hidden text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl"></div>
+            </div>
+
+            <div class="flex items-center gap-2 pt-2">
+                <button type="button" onclick="location.href='/'"
+                    class="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition-all cursor-pointer">
+                    로비로 돌아가기
+                </button>
+                <button type="button" onclick="submitGuestConversion()"
+                    class="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-user-check"></i>
+                    <span>회원가입 및 이관</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
     <!-- 프론트엔드 비즈니스 로직 스크립트 -->
     <!-- ================================================================= -->
     <script>
@@ -1101,6 +1161,24 @@
             const savedPoke = localStorage.getItem("edumate_pokemon_type");
             if (savedPoke && POKEMON_TYPE_CONFIG_JS[savedPoke]) currentPokemonType = savedPoke;
 
+            const isGuest = (!savedId) || (savedId === "guest") || (savedId.startsWith("guest_")) || (savedRole === "guest") || (sessionAcc && (sessionAcc.is_guest || sessionAcc.role === "guest"));
+
+            if (isGuest) {
+                const blockModal = document.getElementById("guestAccessBlockModal");
+                if (blockModal) {
+                    blockModal.classList.remove("hidden");
+                    if (savedName && savedName !== "게스트") {
+                        const nameInp = document.getElementById("guestConvName");
+                        if (nameInp) nameInp.value = savedName;
+                    }
+                    if (sessionAcc && sessionAcc.grade) {
+                        const gradeSel = document.getElementById("guestConvGrade");
+                        if (gradeSel) gradeSel.value = String(sessionAcc.grade);
+                    }
+                }
+                return;
+            }
+
             renderGradeReferenceTable();
             updateHeaderScore();
 
@@ -1133,6 +1211,21 @@
                 const u = data.user;
                 if (u.user_id && u.user_id !== "guest") currentUserId = u.user_id;
                 if (u.role) currentUserRole = u.role;
+                if (u.user_name) {
+                    const cleanUName = sanitizeUserName(u.user_name);
+                    localStorage.setItem("edumate_math_user_name", cleanUName);
+                    const hdrInput = document.getElementById("headerUserNameInput");
+                    if (hdrInput) hdrInput.value = cleanUName;
+                    try {
+                        const rawAcc = localStorage.getItem("edumate_current_account");
+                        const accObj = rawAcc ? JSON.parse(rawAcc) : {};
+                        accObj.id = currentUserId;
+                        accObj.name = cleanUName;
+                        accObj.role = currentUserRole;
+                        if (u.grade) accObj.grade = u.grade;
+                        localStorage.setItem("edumate_current_account", JSON.stringify(accObj));
+                    } catch(e) {}
+                }
                 currentManagedSubjects = Array.isArray(u.managed_subjects) ? u.managed_subjects : [];
                 currentManagedSubjectsKr = Array.isArray(u.managed_subjects_kr) ? u.managed_subjects_kr : [];
                 currentRoleDisplay = u.role_display || "";
@@ -1153,7 +1246,11 @@
         }
 
         function updateUIWithUser(user) {
-            const isMaster = (currentUserRole === "admin" || user.user_name === "마스터");
+            if (user && user.user_name) {
+                const hdrInput = document.getElementById("headerUserNameInput");
+                if (hdrInput) hdrInput.value = sanitizeUserName(user.user_name);
+            }
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || user.user_name === "마스터");
             const isSub = (currentUserRole === "sub_admin");
 
             // 헤더 정보
@@ -1592,6 +1689,7 @@
                         current_user_id: currentUserId,
                         current_user_name: getCurrentUserName(),
                         current_password: currentPw,
+                        new_user_id: currentUserId,
                         new_user_name: newName || null,
                         new_grade: newGrade || null,
                         new_password: newPw || null,
@@ -1599,14 +1697,26 @@
                     })
                 });
                 const data = await res.json();
-                if (data.status === "success") {
+                if (data.status === "success" && data.user) {
                     alert("회원 정보가 성공적으로 변경되었습니다!");
                     document.getElementById("editCurrentPw").value = "";
                     document.getElementById("editNewPw").value = "";
                     document.getElementById("editNewPwConfirm").value = "";
-                    if (newName) {
-                        localStorage.setItem("edumate_math_user_name", newName);
-                        document.getElementById("headerUserNameInput").value = newName;
+                    const updatedName = sanitizeUserName(data.user.user_name || newName);
+                    if (updatedName) {
+                        localStorage.setItem("edumate_math_user_name", updatedName);
+                        const hdrInput = document.getElementById("headerUserNameInput");
+                        if (hdrInput) hdrInput.value = updatedName;
+
+                        try {
+                            const curAccStr = localStorage.getItem("edumate_current_account");
+                            const acc = curAccStr ? JSON.parse(curAccStr) : {};
+                            acc.id = currentUserId;
+                            acc.name = updatedName;
+                            if (data.user.role) acc.role = data.user.role;
+                            if (data.user.grade) acc.grade = data.user.grade;
+                            localStorage.setItem("edumate_current_account", JSON.stringify(acc));
+                        } catch(e){}
                     }
                     await loadUserProfile();
                 } else {
@@ -1664,7 +1774,7 @@
             const badgeEl = document.getElementById("qbankPermittedSubjectsBadge");
             if (!subjSelect) return;
 
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             const allowedCodes = isMaster
                 ? SUBJECT_ORDER_CODES.slice()
                 : (qbankMetaCache.user_permission?.allowed_subjects || currentManagedSubjects || []);
@@ -2150,17 +2260,40 @@
                         return;
                     }
 
+                    const pendingCharts = [];
                     container.innerHTML = items.map(item => {
                         const badgeInfo = getSubjectBadgeInfo(item.subject);
                         const sourceBadge = item.source_type === "ai_log"
                             ? `<span class="px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">AI 출제 로그 저장</span>`
                             : `<span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">수동 등록</span>`;
+
+                        const meta = (typeof extractVisualMetaFromQuestionText === "function")
+                            ? extractVisualMetaFromQuestionText(item.question_text)
+                            : { cleanQuestion: item.question_text, synthVisual: null, dirFooter: "" };
+                        const cleanQuestion = meta.cleanQuestion || item.question_text || "";
+                        const effectiveDirFooter = item.direction_footer || meta.dirFooter || "";
+                        const effectiveVisualData = (item.visual_data && item.visual_data.type && item.visual_data.type !== "none")
+                            ? item.visual_data
+                            : meta.synthVisual;
+
+                        let visualHtml = "";
+                        if (typeof renderHistoryVisualHtml === "function" && effectiveVisualData) {
+                            const vRes = renderHistoryVisualHtml(effectiveVisualData, cleanQuestion, `qbank_${item.id}`);
+                            if (vRes) {
+                                visualHtml = vRes.html || "";
+                                if (Array.isArray(vRes.initCharts)) {
+                                    pendingCharts.push(...vRes.initCharts);
+                                }
+                            }
+                        }
+
                         const choicesText = (Array.isArray(item.choices) && item.choices.length > 0 && item.question_type === "객관식")
-                            ? `<div class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200">보기: ${item.choices.map((c, i) => `(${i + 1}) ${c}`).join(" / ")}</div>`
+                            ? `<div class="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 leading-relaxed font-semibold">보기: ${item.choices.map((c, i) => `(${i + 1}) ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(c, false) : c}`).join(" / ")}</div>`
                             : "";
-                        const miniGridHtml = (item.question_type === "단답형 주관식 2" && typeof renderMiniColoringGridHtml === "function")
-                            ? renderMiniColoringGridHtml(item.correct_answer, item.direction_footer || "")
-                            : "";
+
+                        const corrGridHtml = (typeof renderMiniColoringGridHtml === "function")
+                            ? renderMiniColoringGridHtml(item.correct_answer, effectiveDirFooter)
+                            : null;
 
                         return `
                             <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all space-y-2">
@@ -2182,16 +2315,28 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="text-xs font-bold text-slate-900 whitespace-pre-wrap leading-relaxed">${item.question_text}</div>
+                                <div class="text-xs font-bold text-slate-900 whitespace-pre-wrap leading-relaxed">${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(cleanQuestion, false) : cleanQuestion}</div>
+                                ${visualHtml ? `<div class="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200 my-1">${visualHtml}</div>` : ''}
                                 ${choicesText}
-                                ${miniGridHtml}
                                 <div class="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
-                                    <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답: ${item.correct_answer}</span>
-                                    ${item.explanation ? `<span class="text-slate-500 text-[11px] truncate max-w-md">해설: ${item.explanation}</span>` : ''}
+                                    ${corrGridHtml ? `
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답 (색칠 모양)</span>
+                                            <div class="inline-block align-middle">${corrGridHtml}</div>
+                                        </div>
+                                    ` : `
+                                        <span class="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">정답: ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(item.correct_answer, true) : item.correct_answer}</span>
+                                    `}
+                                    ${item.explanation ? `<span class="text-slate-500 text-[11px] truncate max-w-md">해설: ${typeof ensureLatexDelimiters === "function" ? ensureLatexDelimiters(item.explanation, false) : item.explanation}</span>` : ''}
                                 </div>
                             </div>
                         `;
                     }).join("");
+
+                    pendingCharts.forEach(fn => { try { fn(); } catch(e){} });
+                    if (typeof renderLatex === "function") {
+                        renderLatex(container);
+                    }
                 } else {
                     container.innerHTML = `<div class="text-xs text-slate-400 p-4 text-center">저장된 문제가 없습니다.</div>`;
                 }
@@ -3529,9 +3674,94 @@
             loadStudyHistory(currentHistoryFavOnly);
         }
 
-        function handleLogout() {
+        async function submitGuestConversion() {
+            const idVal = document.getElementById("guestConvId").value.trim();
+            const pwVal = document.getElementById("guestConvPw").value.trim();
+            const pwConfVal = document.getElementById("guestConvPwConf").value.trim();
+            const nameVal = sanitizeUserName(document.getElementById("guestConvName").value.trim());
+            const gradeVal = parseInt(document.getElementById("guestConvGrade").value || "4", 10);
+            const errEl = document.getElementById("guestConvErrorMsg");
+
+            if (!idVal || !pwVal || !pwConfVal || !nameVal) {
+                errEl.innerText = "모든 항목을 입력해 주세요.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+            if (idVal.length < 2) {
+                errEl.innerText = "아이디는 2자 이상이어야 합니다.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+            if (pwVal.length < 4) {
+                errEl.innerText = "비밀번호는 4자 이상이어야 합니다.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+            if (pwVal !== pwConfVal) {
+                errEl.innerText = "비밀번호가 일치하지 않습니다.";
+                errEl.classList.remove("hidden");
+                return;
+            }
+
+            const guestSessionId = localStorage.getItem("edumate_guest_session_id") || localStorage.getItem("edumate_math_user_id");
+            const guestIdToSend = (guestSessionId && (guestSessionId.startsWith("guest_") || guestSessionId === "guest")) ? guestSessionId : null;
+
+            try {
+                const res = await fetch("/api/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_id: idVal,
+                        password: pwVal,
+                        password_confirm: pwConfVal,
+                        user_name: nameVal,
+                        grade: gradeVal,
+                        guest_id: guestIdToSend
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === "success" && data.user) {
+                    errEl.classList.add("hidden");
+                    localStorage.removeItem("edumate_guest_session_id");
+                    alert("🎉 정식 회원가입이 완료되었습니다!\n체험 동안 풀이하신 문제와 점수가 새 계정으로 성공적으로 이관되었습니다.");
+                    const acc = {
+                        id: data.user.user_id,
+                        name: sanitizeUserName(data.user.user_name),
+                        grade: data.user.grade || gradeVal,
+                        role: "student",
+                        managed_subjects: [],
+                        managed_subjects_kr: [],
+                        role_display: `초등 ${data.user.grade || gradeVal}학년`
+                    };
+                    localStorage.setItem("edumate_current_account", JSON.stringify(acc));
+                    localStorage.setItem("edumate_math_user_name", acc.name);
+                    localStorage.setItem("edumate_math_user_id", acc.id);
+                    localStorage.setItem("edumate_math_user_role", acc.role);
+                    window.location.reload();
+                } else {
+                    errEl.innerText = data.detail || "회원가입에 실패했습니다.";
+                    errEl.classList.remove("hidden");
+                }
+            } catch(e) {
+                errEl.innerText = "서버 통신 오류: " + e.message;
+                errEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleLogout() {
+            const guestSessionId = localStorage.getItem("edumate_guest_session_id") || localStorage.getItem("edumate_math_user_id");
+            if (guestSessionId && (guestSessionId.startsWith("guest_") || guestSessionId === "guest")) {
+                try {
+                    await fetch("/api/guest/clear", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ guest_id: guestSessionId })
+                    });
+                } catch(e) {}
+            }
             localStorage.removeItem("edumate_current_account");
             localStorage.removeItem("edumate_current_user");
+            localStorage.removeItem("edumate_guest_session_id");
             localStorage.removeItem("edumate_math_user_id");
             localStorage.removeItem("edumate_math_user_name");
             localStorage.removeItem("edumate_math_user_role");

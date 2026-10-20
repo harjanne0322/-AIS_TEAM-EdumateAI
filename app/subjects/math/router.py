@@ -115,6 +115,7 @@ class RegisterRequest(BaseModel):
     password_confirm: str = Field(..., description="비밀번호 확인")
     user_name: str = Field(..., description="학생 이름")
     grade: int = Field(default=4, description="학생 학년 (1~6)")
+    guest_id: Optional[str] = Field(default=None, description="이관할 비회원 게스트 세션 아이디")
 
 
 
@@ -128,11 +129,12 @@ class CreateAccountRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     current_user_id: str = Field(default="guest", description="현재 아이디")
     current_user_name: str = Field(default="김에듀", description="현재 이름")
-    new_user_id: str = Field(..., description="변경할 새 아이디")
-    new_password: str = Field(..., description="변경할 새 비밀번호")
+    current_password: Optional[str] = Field(default=None, description="현재 비밀번호 확인")
+    new_user_id: Optional[str] = Field(default=None, description="변경할 새 아이디")
+    new_password: Optional[str] = Field(default=None, description="변경할 새 비밀번호")
     new_password_confirm: Optional[str] = Field(default=None, description="새 비밀번호 확인")
     new_user_name: str = Field(..., description="변경할 새 이름")
-    new_grade: int = Field(default=4, description="변경할 새 학년 (1~6)")
+    new_grade: Optional[int] = Field(default=4, description="변경할 새 학년 (1~6)")
 
 
 class QuizGenerateRequest(BaseModel):
@@ -251,7 +253,7 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=500, detail=f"로그인 처리 실패: {str(e)}")
 
 
-@router.post("/register", summary="학생 신규 회원가입")
+@router.post("/register", summary="학생 신규 회원가입 (비회원 풀이기록 안전 이관 지원)")
 async def register(req: RegisterRequest):
     """학생이 아이디, 비번, 비번확인, 이름, 학년으로 직접 회원가입합니다."""
     try:
@@ -261,12 +263,25 @@ async def register(req: RegisterRequest):
             password_confirm=req.password_confirm,
             user_name=req.user_name,
             grade=req.grade,
+            guest_id=req.guest_id,
         )
         return {"status": "success", "message": "회원가입이 완료되었습니다!", "user": user_data}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"회원가입 처리 실패: {str(e)}")
+
+
+@router.post("/guest/clear", summary="비회원 로그아웃 시 임시 문제풀이 기록 증발(삭제)")
+async def clear_guest(req: Dict[str, Any]):
+    """비회원 체험 중 풀었던 임시 로그를 로그아웃 시 완전 삭제합니다."""
+    try:
+        from app.database.quiz_manager import clear_guest_logs
+        guest_id = str(req.get("guest_id") or "").strip()
+        deleted = clear_guest_logs(guest_id)
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        return {"status": "success", "deleted": 0}
 
 
 
@@ -431,7 +446,7 @@ async def math_question_bank_unit_stats(
 ):
     try:
         stats = get_unit_bank_stats(subject=subject, user_id=user_id, user_name=user_name)
-        return {"status": "success", **stats}
+        return {"status": "success", "stats": stats, "bank_stats": stats, **stats}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"단원별 문제은행 현황 조회 실패: {str(e)}")
 
@@ -446,10 +461,10 @@ async def ranking(limit: int = 10):
         raise HTTPException(status_code=500, detail=f"랭킹 조회 실패: {str(e)}")
 
 
-@router.post("/profile/update", summary="[일반 회원 전용] 개인정보(아이디, 비번, 이름, 학년) 변경 및 DB 동기화")
+@router.post("/profile/update", summary="개인정보(학생 이름, 비번, 학년) 변경 및 DB 동기화")
 async def update_profile(req: UpdateProfileRequest):
-    """일반 회원이 본인의 아이디, 비밀번호, 이름, 학년을 직접 변경하고 누적 점수 및 풀이 기록을 승계합니다."""
-    if req.new_password_confirm and req.new_password != req.new_password_confirm:
+    """회원(마스터 관리자 포함)이 본인의 아이디, 비밀번호, 이름, 학년을 직접 변경하고 누적 점수 및 풀이 기록을 승계합니다."""
+    if req.new_password and req.new_password_confirm and req.new_password != req.new_password_confirm:
         raise HTTPException(status_code=400, detail="새 비밀번호와 비밀번호 확인이 일치하지 않습니다.")
     try:
         user_data = update_account_profile(
@@ -459,6 +474,7 @@ async def update_profile(req: UpdateProfileRequest):
             new_password=req.new_password,
             new_user_name=req.new_user_name,
             new_grade=req.new_grade,
+            current_password=req.current_password,
         )
         return {"status": "success", "user": user_data}
     except ValueError as ve:

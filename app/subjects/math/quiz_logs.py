@@ -232,9 +232,16 @@ def save_quiz_log(
     init_db()
     clean_name = (user_name or "김에듀").strip() or "김에듀"
     clean_id = (user_id or kwargs.get("user_id") or "").strip()
-    if grade is not None and 1 <= grade <= 6:
-        _USER_GRADE_CACHE[clean_name] = int(grade)
-    effective_grade = int(grade) if (grade is not None and 1 <= grade <= 6) else _USER_GRADE_CACHE.get(clean_name, 4)
+    grade_val = None
+    if grade is not None:
+        try:
+            g = int(grade)
+            if 1 <= g <= 6:
+                grade_val = g
+                _USER_GRADE_CACHE[clean_name] = g
+        except (ValueError, TypeError):
+            pass
+    effective_grade = grade_val if grade_val is not None else _USER_GRADE_CACHE.get(clean_name, 4)
     now = _now_str()
     effective_quiz_id = quiz_id or f"{SUBJECT_NAME}_{now}_{question[:20]}"
 
@@ -244,22 +251,13 @@ def save_quiz_log(
 
     is_guest = (
         clean_id.lower() == "guest"
+        or clean_id.lower().startswith("guest_")
         or (not clean_id and clean_name.lower() in ("게스트", "guest"))
         or kwargs.get("is_guest") is True
         or kwargs.get("role") == "guest"
     )
-    if is_guest:
-        # 비회원(이름으로 바로 시작) 모드는 DB에 일체 저장하지 않는 체험 모드 (공유 방지)
-        return {
-            "log_id": 0,
-            "quiz_id": effective_quiz_id,
-            "added_score": capped_earned if not is_solution_revealed else 0,
-            "best_score": capped_earned,
-            "subject_score": 0,
-            "total_score": 0,
-            "level_info": calculate_level_tier(0),
-        }
-
+    if is_guest and not clean_id:
+        clean_id = "guest"
 
     conn = _get_conn()
     try:
@@ -403,7 +401,8 @@ def get_recent_logs_for_custom(user_name: str = "김에듀", limit: int = 30, us
     init_db()
     clean_name = (user_name or "김에듀").strip() or "김에듀"
     clean_id = (user_id or "").strip()
-    if clean_id.lower() == "guest" or clean_name.lower() in ("게스트", "guest"):
+    is_guest = (clean_id.lower() == "guest") or (clean_id.lower().startswith("guest_")) or (not clean_id and clean_name.lower() in ("게스트", "guest"))
+    if is_guest:
         return []
 
     conn = _get_conn()
@@ -450,9 +449,12 @@ def toggle_favorite_log(
     is_favorite: Optional[bool] = None,
     user_name: Optional[str] = None,
     quiz_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """특정 문제 풀이 로그의 ⭐ 즐겨찾기 상태를 토글 (게스트는 메모리 응답)"""
-    if (log_id and int(log_id) <= 0) or (user_name and user_name.strip().lower() in ("게스트", "guest")):
+    clean_id = (user_id or "").strip()
+    is_guest = (clean_id.lower() == "guest") or (clean_id.lower().startswith("guest_")) or (not clean_id and user_name and user_name.strip().lower() in ("게스트", "guest"))
+    if (log_id and int(log_id) <= 0) or is_guest:
         return {"log_id": 0, "is_favorite": 1 if is_favorite else 0}
 
     init_db()
@@ -649,7 +651,8 @@ def get_user_study_history(
     init_db()
     clean_name = (user_name or "김에듀").strip() or "김에듀"
     clean_id = (user_id or "").strip()
-    if clean_id.lower() == "guest" or clean_name.lower() in ("게스트", "guest"):
+    is_guest = (clean_id.lower() == "guest") or (clean_id.lower().startswith("guest_")) or (not clean_id and clean_name.lower() in ("게스트", "guest"))
+    if is_guest:
         return []
 
     subj_key = (subject_filter or "all").strip().lower()
