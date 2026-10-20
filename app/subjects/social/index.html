@@ -1791,6 +1791,45 @@
       letter-spacing: -0.3px;
     }
 
+    /* 🔊 AI 음성 읽어주기 (TTS) 버튼 스타일 */
+    .btn-tts-listen {
+      background: #f0fdf4;
+      color: #166534;
+      border: 1.2px solid #86efac;
+      border-radius: 10px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 1px 3px rgba(22, 101, 52, 0.08);
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .btn-tts-listen:hover {
+      background: #dcfce7;
+      color: #14532d;
+      border-color: #4ade80;
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(22, 101, 52, 0.15);
+    }
+
+    .btn-tts-listen.speaking {
+      background: #fef2f2;
+      color: #991b1b;
+      border-color: #fca5a5;
+      animation: pulseTts 1.2s infinite ease-in-out;
+    }
+
+    @keyframes pulseTts {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      50% { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+    }
+
     /* 우측 퀘스트 패널 */
     .map-info-panel {
       display: flex;
@@ -2540,6 +2579,370 @@
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
     }
+
+    /* ====================================================================== */
+    /* 🏆 국토 탐험 완주 디지털 인증서 / 수료증 발급 스타일 */
+    /* ====================================================================== */
+    .btn-cert-open {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: #ffffff;
+      border: 1.5px solid #b45309;
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 12.5px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 3px 10px rgba(217, 119, 6, 0.28);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      margin-left: auto;
+    }
+    .btn-cert-open:hover {
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 6px 16px rgba(217, 119, 6, 0.4);
+    }
+
+    .cert-modal-card {
+      background: #ffffff;
+      border-radius: 22px;
+      max-width: 780px;
+      width: 95%;
+      box-shadow: 0 25px 60px rgba(15, 23, 42, 0.35);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: certModalPop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes certModalPop {
+      0% { transform: scale(0.85); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .cert-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 22px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .cert-modal-close {
+      background: #f1f5f9;
+      border: none;
+      font-size: 16px;
+      color: #64748b;
+      cursor: pointer;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .cert-modal-close:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    .cert-printable-frame {
+      padding: 22px;
+      background: #fffdf9;
+      position: relative;
+    }
+    .cert-outer-border {
+      border: 4px double #d97706;
+      border-radius: 16px;
+      padding: 8px;
+      background: linear-gradient(135deg, rgba(254, 243, 199, 0.35) 0%, rgba(255, 255, 255, 0.98) 50%, rgba(254, 243, 199, 0.35) 100%);
+      box-shadow: inset 0 0 20px rgba(217, 119, 6, 0.08);
+      position: relative;
+    }
+    .cert-inner-border {
+      border: 1.5px solid #b45309;
+      border-radius: 12px;
+      padding: 28px 24px 22px;
+      position: relative;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .cert-corner {
+      position: absolute;
+      font-size: 18px;
+      color: #d97706;
+      opacity: 0.85;
+      user-select: none;
+    }
+    .cert-corner.tl { top: 8px; left: 10px; }
+    .cert-corner.tr { top: 8px; right: 10px; }
+    .cert-corner.bl { bottom: 8px; left: 10px; }
+    .cert-corner.br { bottom: 8px; right: 10px; }
+
+    .cert-top-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #78716c;
+      margin-bottom: 12px;
+    }
+    .cert-org-badge {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      border-radius: 12px;
+      padding: 3px 10px;
+      font-size: 11px;
+    }
+
+    .cert-main-title {
+      font-size: 25px;
+      font-weight: 900;
+      color: #0f172a;
+      letter-spacing: 2px;
+      margin: 0 0 4px;
+    }
+    .cert-sub-title {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #d97706;
+      letter-spacing: 3px;
+      margin-bottom: 20px;
+    }
+
+    .cert-recipient-box {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 8px;
+      border-bottom: 2.5px solid #0f172a;
+      padding: 4px 26px 6px;
+      margin-bottom: 16px;
+    }
+    .cert-recipient-box .cert-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #475569;
+    }
+    .cert-recipient-box .cert-name {
+      font-size: 24px;
+      font-weight: 900;
+      color: #0284c7;
+      letter-spacing: 1px;
+    }
+    .cert-recipient-box .cert-honorific {
+      font-size: 14px;
+      font-weight: 700;
+      color: #475569;
+    }
+
+    .cert-body-text {
+      font-size: 13.5px;
+      line-height: 1.85;
+      color: #334155;
+      word-break: keep-all;
+      margin: 0 auto 18px;
+      max-width: 620px;
+      font-weight: 500;
+    }
+
+    .cert-stamps-summary {
+      background: #fffbeb;
+      border: 1.5px dashed #fde047;
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .cert-stamps-header {
+      font-size: 12px;
+      font-weight: 800;
+      color: #b45309;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .cert-stamps-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+    @media (max-width: 640px) {
+      .cert-stamps-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    .cert-stamp-item {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 6px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+    .cert-stamp-item.unlocked {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      box-shadow: 0 1px 4px rgba(245, 158, 11, 0.15);
+    }
+    .cert-stamp-item.locked {
+      background: #f1f5f9;
+      color: #94a3b8;
+      border: 1px dashed #cbd5e1;
+    }
+
+    .cert-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-top: 14px;
+      padding: 0 10px;
+    }
+    .cert-issue-date {
+      font-size: 13px;
+      font-weight: 800;
+      color: #475569;
+    }
+    .cert-issuer-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .cert-issuer-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #0f172a;
+      text-align: right;
+      line-height: 1.4;
+    }
+    .cert-official-seal {
+      width: 66px;
+      height: 66px;
+      border: 2.5px solid #dc2626;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: rotate(-7deg);
+      box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3.5px #dc2626;
+      color: #dc2626;
+      font-size: 9.5px;
+      font-weight: 900;
+      line-height: 1.25;
+      text-align: center;
+      flex-shrink: 0;
+      user-select: none;
+      background: #fff;
+    }
+    .seal-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .cert-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 20px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+    }
+    .btn-cert-action {
+      padding: 9px 18px;
+      border-radius: 12px;
+      font-weight: 800;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      border: none;
+    }
+    .btn-cert-action.print {
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      box-shadow: 0 3px 10px rgba(2, 132, 199, 0.25);
+    }
+    .btn-cert-action.print:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(2, 132, 199, 0.35);
+    }
+    .btn-cert-action.fanfare {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: #ffffff;
+      box-shadow: 0 3px 10px rgba(245, 158, 11, 0.25);
+    }
+    .btn-cert-action.fanfare:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(245, 158, 11, 0.35);
+    }
+    .btn-cert-action.close {
+      background: #e2e8f0;
+      color: #475569;
+    }
+    .btn-cert-action.close:hover {
+      background: #cbd5e1;
+      color: #0f172a;
+    }
+
+    /* ====================================================================== */
+    /* 🖨️ 수료증 전용 프린트 스타일 (@media print) */
+    /* ====================================================================== */
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #passport-cert-modal,
+      #passport-cert-modal #passport-cert-printable,
+      #passport-cert-modal #passport-cert-printable * {
+        visibility: visible !important;
+      }
+      #passport-cert-modal {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        background: transparent !important;
+        display: block !important;
+        padding: 0 !important;
+        z-index: 999999 !important;
+      }
+      .cert-modal-card {
+        box-shadow: none !important;
+        border: none !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        animation: none !important;
+      }
+      .cert-printable-frame {
+        padding: 10mm !important;
+        background: #ffffff !important;
+      }
+      .cert-outer-border {
+        box-shadow: none !important;
+        background: #ffffff !important;
+      }
+      .cert-inner-border {
+        background: #ffffff !important;
+      }
+      .cert-no-print {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -2813,9 +3216,14 @@
           <!-- 양방향(AI ↔ 문제은행) 전환 및 복습 모드 안내 배너 -->
           <div class="fallback-notice-banner" id="fallback-notice-banner"></div>
 
-          <!-- 문제 질문 본문 -->
-          <div class="question-headline" id="q-text">
-            문제를 불러오는 중입니다... 🧭
+          <!-- 문제 질문 본문 & 🔊 AI 음성 읽어주기 -->
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px;">
+            <div class="question-headline" id="q-text" style="flex:1; margin-bottom:0;">
+              문제를 불러오는 중입니다... 🧭
+            </div>
+            <button type="button" class="btn-tts-listen" id="btn-tts-standard" onclick="toggleTtsSpeech('standard')" title="AI 선생님이 문제를 소리 내어 읽어줍니다">
+              <span class="tts-icon">🔊</span> <span class="tts-label">문제 듣기</span>
+            </button>
           </div>
 
           <!-- 답안 영역 -->
@@ -3039,9 +3447,14 @@
                 </div>
               </div>
 
-              <!-- 문제 질문 본문 -->
-              <div class="question-headline" id="map-question-text" style="font-size:17.5px; margin-bottom:14px; padding:15px 18px; line-height:1.6;">
-                지도에 📍 깃발이 꽂힌 지역의 대표 문화재와 특산품으로 알맞은 것은?
+              <!-- 문제 질문 본문 & 🔊 AI 음성 읽어주기 -->
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:14px;">
+                <div class="question-headline" id="map-question-text" style="font-size:17.5px; padding:15px 18px; line-height:1.6; margin-bottom:0; flex:1;">
+                  지도에 📍 깃발이 꽂힌 지역의 대표 문화재와 특산품으로 알맞은 것은?
+                </div>
+                <button type="button" class="btn-tts-listen" id="btn-tts-map" onclick="toggleTtsSpeech('map')" title="AI 선생님이 문제를 소리 내어 읽어줍니다" style="margin-top:4px;">
+                  <span class="tts-icon">🔊</span> <span class="tts-label">문제 듣기</span>
+                </button>
               </div>
 
               <!-- 4지선다 답안 선택 영역 -->
@@ -3068,6 +3481,9 @@
             <div class="passport-stamps-wrap" id="passport-stamps-list">
               <!-- JS에서 스탬프 칩 동적 생성 -->
             </div>
+            <button type="button" class="btn-cert-open" id="btn-passport-cert" onclick="openPassportCertificateModal()" title="국토 대탐험 완주 인증서 보기">
+              <span>🏆 완주 인증서 발급</span>
+            </button>
           </div>
         </div>
       </main>
@@ -3179,6 +3595,97 @@
         </p>
       </div>
       <button class="btn-ca-confirm" onclick="closeCurrentAffairsModal()">확인했어요! 상식 UP! ✨</button>
+    </div>
+  </div>
+
+  <!-- 🏆 대한민국 국토 대탐험 완주 디지털 인증서 / 수료증 모달 -->
+  <div class="modal-overlay" id="passport-cert-modal" onclick="if(event.target === this) closePassportCertificateModal()">
+    <div class="cert-modal-card">
+      <div class="cert-modal-header cert-no-print">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:20px;">🏆</span>
+          <span style="font-weight:800; font-size:15px; color:#0f172a;">국토 대탐험 완주 인증서</span>
+        </div>
+        <button class="cert-modal-close" onclick="closePassportCertificateModal()" title="창 닫기">✕</button>
+      </div>
+
+      <!-- 인쇄 대상 구역 -->
+      <div class="cert-printable-frame" id="passport-cert-printable">
+        <div class="cert-outer-border">
+          <div class="cert-inner-border">
+            <!-- 고풍스러운 코너 장식 -->
+            <div class="cert-corner tl">⚜️</div>
+            <div class="cert-corner tr">⚜️</div>
+            <div class="cert-corner bl">⚜️</div>
+            <div class="cert-corner br">⚜️</div>
+
+            <!-- 인증서 상단 메타 정보 -->
+            <div class="cert-top-meta">
+              <span class="cert-serial" id="cert-serial-no">발급번호: 제 2026-GEO-8821호</span>
+              <span class="cert-org-badge">🇰🇷 2022 개정 초등사회과 공인</span>
+            </div>
+
+            <!-- 인증서 제목 -->
+            <h1 class="cert-main-title">대한민국 국토 대탐험 완주 인증서</h1>
+            <div class="cert-sub-title">CERTIFICATE OF KOREAN GEOGRAPHY EXPLORER</div>
+
+            <!-- 수여자 정보 -->
+            <div class="cert-recipient-box">
+              <span class="cert-label">탐 험 가 :</span>
+              <span class="cert-name" id="cert-student-name">김에듀</span>
+              <span class="cert-honorific">어린이</span>
+            </div>
+
+            <!-- 인증 본문 문구 -->
+            <p class="cert-body-text" id="cert-body-message">
+              위 어린이는 EduMate AI 초등 사회 국토 탐구관의 전국 12개 주요 지역(서울·경기부터 제주도까지)의 대표 문화유산과 지역 특산품 퀴즈를 열정적으로 탐험하여 우수한 성적으로 전 과정을 완주하였으므로, 자랑스러운 <strong>‘대한민국 어린이 국토 마스터’</strong>로 인정하며 이 수료증을 수여합니다.
+            </p>
+
+            <!-- 12개 지역 스탬프 실링 그리드 -->
+            <div class="cert-stamps-summary">
+              <div class="cert-stamps-header">
+                <span>📍 전국 12대 탐험 지역 스탬프 날인 현황</span>
+                <span id="cert-stamps-count" style="color:#d97706; font-size:13px; font-weight:900;">12 / 12 완주</span>
+              </div>
+              <div class="cert-stamps-grid" id="cert-stamps-grid">
+                <!-- JS에서 12개 스탬프 뱃지 동적 생성 -->
+              </div>
+            </div>
+
+            <!-- 발급일자 및 직인/서명 -->
+            <div class="cert-footer">
+              <div class="cert-issue-date" id="cert-issue-date">2026년 10월 20일</div>
+              <div class="cert-issuer-group">
+                <div class="cert-issuer-title">
+                  EduMate AI 초등사회 연구팀<br/>
+                  <span style="font-size:11.5px; color:#64748b; font-weight:700;">사회과 멘토단 일동</span>
+                </div>
+                <!-- 붉은 인주 도장 (직인) -->
+                <div class="cert-official-seal" title="EduMate 사회탐험 공인 직인">
+                  <div class="seal-inner">
+                    <span>에듀메이트</span>
+                    <span>국토탐험</span>
+                    <span>공인직인</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 모달 하단 버튼 (인쇄 시 숨김) -->
+      <div class="cert-actions cert-no-print">
+        <button type="button" class="btn-cert-action print" onclick="printPassportCertificate()" title="A4 인쇄 또는 PDF 파일로 저장">
+          <span>🖨️ 수료증 인쇄 / PDF 저장</span>
+        </button>
+        <button type="button" class="btn-cert-action fanfare" onclick="triggerCelebrationConfetti()" title="축하 폭죽 효과">
+          <span>🎉 축하 폭죽 팡팡!</span>
+        </button>
+        <button type="button" class="btn-cert-action close" onclick="closePassportCertificateModal()">
+          <span>✕ 닫기</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -3718,6 +4225,7 @@
     // 3. 학습 모드 전환 (기본 퀴즈관 vs 심화 서술형 탐구관 vs 국토 지도 탐구관)
     // =========================================================================
     function switchMode(mode) {
+      stopTtsSpeech();
       currentMode = mode;
       try { localStorage.setItem('social_current_mode', mode); } catch (e) {}
 
@@ -3800,6 +4308,7 @@
     // 4. 문제 로드 (AI ↔ 문제은행 양방향 자동 전환 및 3단계 폴백 완벽 연동)
     // =========================================================================
     async function loadNewQuestion() {
+      stopTtsSpeech();
       const unitName = document.getElementById('unit-select').value;
       const qType = (currentMode === 'advanced') ? 'descriptive' : document.getElementById('type-select').value;
 
@@ -4793,6 +5302,12 @@
     let currentMapQuiz = null;
     let selectedMapAnswer = "";
     let earnedStamps = [];
+    try {
+      const savedStamps = localStorage.getItem('social_earned_stamps');
+      if (savedStamps) {
+        earnedStamps = JSON.parse(savedStamps);
+      }
+    } catch (e) {}
     let mapQuestIndex = 1;
 
     // 🌟 국토 탐구관: 특정 지역으로 부드럽게 줌인하고 지형 모양 팝업 표시
@@ -4916,6 +5431,7 @@
 
     // 지도 퀴즈 로드 (순차적 코스 진행 & 한 사이클 내 중복 방지)
     function loadMapQuestion(index) {
+      stopTtsSpeech();
       selectedMapAnswer = "";
       if (typeof index === 'number') {
         currentMapIndex = index % KOREA_MAP_EXPLORE_DATA.length;
@@ -5125,9 +5641,19 @@
         const isFirst = !earnedStamps.includes(currentMapQuiz.id);
         if (isFirst) {
           earnedStamps.push(currentMapQuiz.id);
+          try {
+            localStorage.setItem('social_earned_stamps', JSON.stringify(earnedStamps));
+          } catch (e) {}
         }
         // 💮 도장 쾅! 리얼 스탬프 슬램 이펙트 & 사운드 발동
         triggerStampSlamEffect(currentMapQuiz.name, currentMapQuiz.id);
+
+        // 🏆 12개 전 지역 완주 달성 시 축하와 함께 수료증 자동 발급 팝업!
+        if (isFirst && earnedStamps.length === KOREA_MAP_EXPLORE_DATA.length) {
+          setTimeout(() => {
+            openPassportCertificateModal(true);
+          }, 1800);
+        }
       } else {
         streakCount = 0;
       }
@@ -5341,9 +5867,230 @@
       } catch (e) {}
     }
 
+    // =========================================================================
+    // 🏆 [국토 탐험 완주 디지털 인증서 / 수료증 엔진]
+    // =========================================================================
+    function hashStringForCert(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return hash;
+    }
+
+    function openPassportCertificateModal(isJustCompleted = false) {
+      const modal = document.getElementById('passport-cert-modal');
+      if (!modal) return;
+
+      const userName = getCurrentUserName();
+      const studentNameEl = document.getElementById('cert-student-name');
+      const issueDateEl = document.getElementById('cert-issue-date');
+      const serialNoEl = document.getElementById('cert-serial-no');
+      const bodyMsgEl = document.getElementById('cert-body-message');
+      const countEl = document.getElementById('cert-stamps-count');
+      const gridEl = document.getElementById('cert-stamps-grid');
+
+      if (studentNameEl) studentNameEl.innerText = userName;
+
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      if (issueDateEl) {
+        issueDateEl.innerText = `${year}년 ${month}월 ${day}일`;
+      }
+
+      if (serialNoEl) {
+        const hashVal = Math.abs(hashStringForCert(userName + '_' + year)) % 9000 + 1000;
+        serialNoEl.innerText = `발급번호: 제 ${year}${month}${day}-GEO-${hashVal}호`;
+      }
+
+      const totalCount = KOREA_MAP_EXPLORE_DATA.length;
+      const curCount = earnedStamps.length;
+
+      if (countEl) {
+        countEl.innerText = `${curCount} / ${totalCount} 완주`;
+      }
+
+      if (gridEl) {
+        gridEl.innerHTML = '';
+        KOREA_MAP_EXPLORE_DATA.forEach(item => {
+          const isUnlocked = earnedStamps.includes(item.id);
+          const badge = document.createElement('div');
+          badge.className = `cert-stamp-item ${isUnlocked ? 'unlocked' : 'locked'}`;
+          badge.innerHTML = isUnlocked ? `💮 ${item.name}` : `⏳ ${item.name}`;
+          badge.title = isUnlocked ? `${item.name}: ${item.specialty} 완주!` : `${item.name}: 미탐험 지역`;
+          gridEl.appendChild(badge);
+        });
+      }
+
+      if (bodyMsgEl) {
+        if (curCount >= totalCount) {
+          bodyMsgEl.innerHTML = `위 어린이는 EduMate AI 초등 사회 국토 탐구관의 전국 12개 주요 지역(서울·경기부터 제주도까지)의 대표 문화유산과 지역 특산품 퀴즈를 열정적으로 탐험하여 우수한 성적으로 전 과정을 완주하였으므로, 자랑스러운 <strong>‘대한민국 어린이 국토 마스터’</strong>로 인정하며 이 수료증을 수여합니다.`;
+        } else {
+          bodyMsgEl.innerHTML = `위 어린이는 EduMate AI 초등 사회 국토 탐구관에서 전국 12개 주요 지역 중 총 <strong>${curCount}개 지역</strong>의 문화유산과 특산품을 성실히 탐험하고 있습니다. 남은 지역까지 모두 정복하여 정식 <strong>‘대한민국 어린이 국토 마스터’</strong> 공인 인증을 완성해 보세요!`;
+        }
+      }
+
+      modal.style.display = 'flex';
+
+      if (isJustCompleted || curCount >= totalCount) {
+        setTimeout(() => triggerCelebrationConfetti(), 250);
+      }
+    }
+
+    function closePassportCertificateModal() {
+      const modal = document.getElementById('passport-cert-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function printPassportCertificate() {
+      window.print();
+    }
+
+    // 🎊 화려한 완주 축하 폭죽 파티클 효과
+    function triggerCelebrationConfetti() {
+      playStampSlamAudio();
+      const modal = document.getElementById('passport-cert-modal');
+      if (!modal) return;
+
+      const icons = ['💮', '⭐', '🎉', '🌟', '✨', '🎈', '🏆', '🥇', '🇰🇷'];
+
+      for (let i = 0; i < 36; i++) {
+        const conf = document.createElement('div');
+        conf.className = 'stamp-particle';
+        conf.innerText = icons[Math.floor(Math.random() * icons.length)];
+        conf.style.fontSize = `${16 + Math.random() * 16}px`;
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 140 + Math.random() * 220;
+        const tx = Math.cos(angle) * dist + 'px';
+        const ty = Math.sin(angle) * dist + 'px';
+        const rot = (Math.random() * 720 - 360) + 'deg';
+
+        conf.style.setProperty('--tx', tx);
+        conf.style.setProperty('--ty', ty);
+        conf.style.setProperty('--rot', rot);
+        conf.style.left = '50%';
+        conf.style.top = '50%';
+        conf.style.zIndex = '99999';
+
+        modal.appendChild(conf);
+
+        setTimeout(() => {
+          conf.remove();
+        }, 1700);
+      }
+    }
+
+    // =========================================================================
+    // 🔊 [초등 사회 전용] 다정한 AI 선생님 음성 읽어주기 엔진 (Web Speech API)
+    // =========================================================================
+    let isTtsSpeaking = false;
+    let currentTtsTarget = null; // 'standard' | 'map'
+
+    function stopTtsSpeech() {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      isTtsSpeaking = false;
+      currentTtsTarget = null;
+      updateTtsButtonsUI(false);
+    }
+
+    function updateTtsButtonsUI(speaking, target = null) {
+      const btnStd = document.getElementById('btn-tts-standard');
+      const btnMap = document.getElementById('btn-tts-map');
+
+      [btnStd, btnMap].forEach(btn => {
+        if (!btn) return;
+        const icon = btn.querySelector('.tts-icon');
+        const label = btn.querySelector('.tts-label');
+        btn.classList.remove('speaking');
+        if (icon) icon.innerText = '🔊';
+        if (label) label.innerText = '문제 듣기';
+      });
+
+      if (speaking && target) {
+        const activeBtn = (target === 'map') ? btnMap : btnStd;
+        if (activeBtn) {
+          activeBtn.classList.add('speaking');
+          const icon = activeBtn.querySelector('.tts-icon');
+          const label = activeBtn.querySelector('.tts-label');
+          if (icon) icon.innerText = '⏹️';
+          if (label) label.innerText = '읽기 중지';
+        }
+      }
+    }
+
+    function toggleTtsSpeech(target = 'standard') {
+      if (!('speechSynthesis' in window)) {
+        alert('이 브라우저는 음성 읽기(TTS) 기능을 지원하지 않습니다. 크롬(Chrome)이나 엣지(Edge)를 이용해 주세요.');
+        return;
+      }
+
+      // 이미 읽고 있는 도중 누르면 즉시 중단
+      if (isTtsSpeaking) {
+        const wasSame = (currentTtsTarget === target);
+        stopTtsSpeech();
+        if (wasSame) return;
+      }
+
+      let readText = "";
+      if (target === 'map') {
+        const qEl = document.getElementById('map-question-text');
+        readText = qEl ? qEl.innerText : "";
+      } else {
+        const qEl = document.getElementById('q-text');
+        readText = qEl ? qEl.innerText : "";
+      }
+
+      if (!readText || readText.includes("문제를 불러오는 중입니다")) {
+        return;
+      }
+
+      // 초등학생이 듣기 좋도록 정제 ([ 빈 칸 ] -> 빈칸, 특수기호 및 이모지 제거)
+      const cleanText = readText
+        .replace(/\[\s*빈\s*칸\s*\]/g, '빈칸')
+        .replace(/[\(\)\[\]\{\}]/g, ' ')
+        .replace(/[⭕❌🔢✍️📝🤖🧭💡✨📍🗺️🍞🏛️]/g, '')
+        .trim();
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = 'ko-KR';
+      utterance.rate = 0.92; // 초등학생 눈높이에 맞춘 또박또박하고 다정한 속도
+      utterance.pitch = 1.05; // 친근하고 부드러운 톤
+
+      // 한국어 음성 우선 선택
+      const voices = window.speechSynthesis.getVoices();
+      const koVoice = voices.find(v => v.lang && (v.lang.includes('ko') || v.lang.includes('KO')));
+      if (koVoice) {
+        utterance.voice = koVoice;
+      }
+
+      utterance.onstart = () => {
+        isTtsSpeaking = true;
+        currentTtsTarget = target;
+        updateTtsButtonsUI(true, target);
+      };
+      utterance.onend = () => {
+        isTtsSpeaking = false;
+        currentTtsTarget = null;
+        updateTtsButtonsUI(false);
+      };
+      utterance.onerror = () => {
+        isTtsSpeaking = false;
+        currentTtsTarget = null;
+        updateTtsButtonsUI(false);
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }
 
     // 다음 문제로 넘어가기 (팝업 닫고 새로운 문제 즉시 호출!)
     function nextQuestion() {
+      stopTtsSpeech();
       document.getElementById('result-modal').style.display = 'none';
       if (currentMode === 'map') {
         nextMapQuestion();
