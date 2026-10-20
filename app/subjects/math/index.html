@@ -1864,13 +1864,13 @@
         }
 
         function isSubAdminOrHigher() {
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             if (isMaster) return true;
             return currentUserRole === "sub_admin" && Array.isArray(currentManagedSubjects) && currentManagedSubjects.length > 0;
         }
 
         function canManageSubject(subjectRaw) {
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             if (isMaster) return true;
             if (currentUserRole !== "sub_admin") return false;
             const code = normalizeSubjectCodeJS(subjectRaw);
@@ -2041,7 +2041,7 @@
             currentUserGrade = parseInt(grade, 10) || 4;
             const el = document.getElementById("headerUserGrade");
             if (!el) return;
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             if (isMaster) {
                 el.textContent = "총 관리자";
             } else if (currentUserRole === "sub_admin" && currentManagedSubjectsKr.length > 0) {
@@ -2068,14 +2068,22 @@
             const qbankPanel = document.getElementById("profileQuestionBankSection");
             const profileEditSection = document.getElementById("profileEditSection");
 
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             const isSubAdmin = (currentUserRole === "sub_admin" && currentManagedSubjects.length > 0);
 
             if (isMaster) {
                 currentUserRole = "admin";
                 if (btnAdminInsideProfile) btnAdminInsideProfile.classList.remove("hidden");
                 if (btnQbankInsideProfile) btnQbankInsideProfile.classList.remove("hidden");
-                if (profileEditSection) profileEditSection.classList.add("hidden");
+                if (profileEditSection) {
+                    profileEditSection.classList.remove("hidden");
+                    const editId = document.getElementById("editUserId");
+                    const editName = document.getElementById("editUserName");
+                    const editGrade = document.getElementById("editUserGrade");
+                    if (editId) editId.value = (currentUserId && currentUserId !== "guest") ? currentUserId : "master";
+                    if (editName) editName.value = getCurrentUserName();
+                    if (editGrade) editGrade.value = String(getCurrentUserGrade());
+                }
             } else {
                 if (btnAdminInsideProfile) btnAdminInsideProfile.classList.add("hidden");
                 if (isSubAdmin) {
@@ -2264,7 +2272,7 @@
         function applyUserSession(user) {
             isLoggedIn = true;
             currentUserId = user.user_id || "guest";
-            currentUserRole = user.role || (user.user_name === "마스터" ? "admin" : "student");
+            currentUserRole = user.role || (user.user_id === "master" || user.user_name === "마스터" ? "admin" : "student");
             currentManagedSubjects = Array.isArray(user.managed_subjects) ? user.managed_subjects : [];
             currentManagedSubjectsKr = Array.isArray(user.managed_subjects_kr) ? user.managed_subjects_kr : [];
             currentRoleDisplay = user.role_display || "";
@@ -2528,7 +2536,7 @@
             const badgeEl = document.getElementById("qbankPermittedSubjectsBadge");
             if (!subjSelect) return;
 
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             const allowedCodes = isMaster
                 ? SUBJECT_ORDER_CODES.slice()
                 : (qbankMetaCache.user_permission?.allowed_subjects || currentManagedSubjects || []);

@@ -266,7 +266,7 @@
                         <i class="fa-solid fa-user-gear text-blue-600"></i>
                         <span>회원 정보 직접 변경 (비밀번호 / 이름 / 학년)</span>
                     </h3>
-                    <p class="text-xs text-slate-500">본인의 이름, 학년, 비밀번호를 직접 안전하게 변경할 수 있습니다.</p>
+                    <p class="text-xs text-slate-500">본인의 학생 이름, 학년, 비밀번호를 직접 안전하게 변경할 수 있습니다. (총 관리자 계정도 학생 이름 변경 가능)</p>
                 </div>
             </div>
 
@@ -1133,6 +1133,11 @@
                 const u = data.user;
                 if (u.user_id && u.user_id !== "guest") currentUserId = u.user_id;
                 if (u.role) currentUserRole = u.role;
+                if (u.user_name) {
+                    localStorage.setItem("edumate_math_user_name", u.user_name);
+                    const hdrInput = document.getElementById("headerUserNameInput");
+                    if (hdrInput) hdrInput.value = u.user_name;
+                }
                 currentManagedSubjects = Array.isArray(u.managed_subjects) ? u.managed_subjects : [];
                 currentManagedSubjectsKr = Array.isArray(u.managed_subjects_kr) ? u.managed_subjects_kr : [];
                 currentRoleDisplay = u.role_display || "";
@@ -1153,7 +1158,7 @@
         }
 
         function updateUIWithUser(user) {
-            const isMaster = (currentUserRole === "admin" || user.user_name === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || user.user_name === "마스터");
             const isSub = (currentUserRole === "sub_admin");
 
             // 헤더 정보
@@ -1592,6 +1597,7 @@
                         current_user_id: currentUserId,
                         current_user_name: getCurrentUserName(),
                         current_password: currentPw,
+                        new_user_id: currentUserId,
                         new_user_name: newName || null,
                         new_grade: newGrade || null,
                         new_password: newPw || null,
@@ -1599,14 +1605,26 @@
                     })
                 });
                 const data = await res.json();
-                if (data.status === "success") {
+                if (data.status === "success" && data.user) {
                     alert("회원 정보가 성공적으로 변경되었습니다!");
                     document.getElementById("editCurrentPw").value = "";
                     document.getElementById("editNewPw").value = "";
                     document.getElementById("editNewPwConfirm").value = "";
-                    if (newName) {
-                        localStorage.setItem("edumate_math_user_name", newName);
-                        document.getElementById("headerUserNameInput").value = newName;
+                    const updatedName = data.user.user_name || newName;
+                    if (updatedName) {
+                        localStorage.setItem("edumate_math_user_name", updatedName);
+                        const hdrInput = document.getElementById("headerUserNameInput");
+                        if (hdrInput) hdrInput.value = updatedName;
+
+                        const curAccStr = localStorage.getItem("edumate_current_account");
+                        if (curAccStr) {
+                            try {
+                                const acc = JSON.parse(curAccStr);
+                                acc.name = updatedName;
+                                if (data.user.role) acc.role = data.user.role;
+                                localStorage.setItem("edumate_current_account", JSON.stringify(acc));
+                            } catch(e){}
+                        }
                     }
                     await loadUserProfile();
                 } else {
@@ -1664,7 +1682,7 @@
             const badgeEl = document.getElementById("qbankPermittedSubjectsBadge");
             if (!subjSelect) return;
 
-            const isMaster = (currentUserRole === "admin" || getCurrentUserName() === "마스터");
+            const isMaster = (currentUserRole === "admin" || currentUserId === "master" || getCurrentUserName() === "마스터");
             const allowedCodes = isMaster
                 ? SUBJECT_ORDER_CODES.slice()
                 : (qbankMetaCache.user_permission?.allowed_subjects || currentManagedSubjects || []);

@@ -115,11 +115,12 @@ class QuestionBankDeleteRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     current_user_id: str = Field(default="guest", description="현재 아이디")
     current_user_name: str = Field(default="김에듀", description="현재 이름")
-    new_user_id: str = Field(..., description="변경할 새 아이디")
-    new_password: str = Field(..., description="변경할 새 비밀번호")
+    current_password: Optional[str] = Field(default=None, description="현재 비밀번호 확인")
+    new_user_id: Optional[str] = Field(default=None, description="변경할 새 아이디")
+    new_password: Optional[str] = Field(default=None, description="변경할 새 비밀번호")
     new_password_confirm: Optional[str] = Field(default=None, description="새 비밀번호 확인")
     new_user_name: str = Field(..., description="변경할 새 이름")
-    new_grade: int = Field(default=4, description="변경할 새 학년 (1~6)")
+    new_grade: Optional[int] = Field(default=4, description="변경할 새 학년 (1~6)")
 
 
 class UserProfileRequest(BaseModel):
@@ -434,10 +435,10 @@ async def api_question_bank_grade(req: QuestionBankGradeRequest):
         raise HTTPException(status_code=500, detail=f"문제은행 AI 채점 실패: {str(e)}")
 
 
-@router.post("/api/profile/update", summary="[일반 회원 전용] 개인정보 변경 및 DB 동기화")
+@router.post("/api/profile/update", summary="개인정보(학생 이름, 비번, 학년) 변경 및 DB 동기화")
 async def update_profile(req: UpdateProfileRequest):
-    """일반 회원이 본인의 개인정보를 직접 변경하고 누적 점수를 승계합니다."""
-    if req.new_password_confirm and req.new_password != req.new_password_confirm:
+    """회원(마스터 관리자 포함)이 본인의 학생 이름, 비밀번호, 학년을 직접 변경하고 누적 점수를 승계합니다."""
+    if req.new_password and req.new_password_confirm and req.new_password != req.new_password_confirm:
         raise HTTPException(status_code=400, detail="새 비밀번호와 비밀번호 확인이 일치하지 않습니다.")
     try:
         user_data = update_account_profile(
@@ -447,6 +448,7 @@ async def update_profile(req: UpdateProfileRequest):
             new_password=req.new_password,
             new_user_name=req.new_user_name,
             new_grade=req.new_grade,
+            current_password=req.current_password,
         )
         return {"status": "success", "user": user_data}
     except ValueError as ve:
