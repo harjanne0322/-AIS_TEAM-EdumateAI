@@ -432,7 +432,7 @@ async def math_question_bank_unit_stats(
 ):
     try:
         stats = get_unit_bank_stats(subject=subject, user_id=user_id, user_name=user_name)
-        return {"status": "success", **stats}
+        return {"status": "success", "stats": stats, "bank_stats": stats, **stats}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"단원별 문제은행 현황 조회 실패: {str(e)}")
 

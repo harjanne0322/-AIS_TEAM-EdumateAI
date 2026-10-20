@@ -3671,8 +3671,8 @@
                     `/math/question-bank/unit-stats?user_id=${encodeURIComponent(currentUserId || '')}&user_name=${encodeURIComponent(getCurrentUserName())}&grade_group=${encodeURIComponent(targetGroup)}`
                 );
                 const data = await res.json();
-                if (data.status === "success" && data.stats) {
-                    unitBankStatsCache = data.stats;
+                if (data.status === "success") {
+                    unitBankStatsCache = data.stats || data.bank_stats || data;
                     refreshUnitAndTopicOptionLabels();
                     updateUnitBankStatusBadge();
                 }
@@ -3775,13 +3775,16 @@
             if (!unitBankStatsCache) return { total: 0, solved: 0, remaining: 0 };
             const activeGroup = currentMode === "custom" ? getGradeGroupByStudentGrade(getCurrentUserGrade()) : currentMode;
             if (!unitValue || unitValue === "랜덤") {
-                if (unitBankStatsCache.by_grade_group && unitBankStatsCache.by_grade_group[activeGroup]) {
-                    return unitBankStatsCache.by_grade_group[activeGroup];
+                if (activeGroup && unitBankStatsCache.by_grade_group) {
+                    return unitBankStatsCache.by_grade_group[activeGroup] || { total: 0, solved: 0, remaining: 0 };
                 }
                 return unitBankStatsCache.overall || { total: 0, solved: 0, remaining: 0 };
             }
-            if (unitBankStatsCache.by_unit && unitBankStatsCache.by_unit[activeGroup] && unitBankStatsCache.by_unit[activeGroup][unitValue]) {
-                return unitBankStatsCache.by_unit[activeGroup][unitValue];
+            if (unitBankStatsCache.by_unit && activeGroup && unitBankStatsCache.by_unit[activeGroup]) {
+                if (unitBankStatsCache.by_unit[activeGroup][unitValue]) {
+                    return unitBankStatsCache.by_unit[activeGroup][unitValue];
+                }
+                return { total: 0, solved: 0, remaining: 0 };
             }
             if (unitBankStatsCache.by_unit_flat && unitBankStatsCache.by_unit_flat[unitValue]) {
                 return unitBankStatsCache.by_unit_flat[unitValue];
@@ -3797,11 +3800,11 @@
             }
             if (
                 unitBankStatsCache.by_topic &&
+                activeGroup &&
                 unitBankStatsCache.by_topic[activeGroup] &&
-                unitBankStatsCache.by_topic[activeGroup][unitValue] &&
-                unitBankStatsCache.by_topic[activeGroup][unitValue][topicValue]
+                unitBankStatsCache.by_topic[activeGroup][unitValue]
             ) {
-                return unitBankStatsCache.by_topic[activeGroup][unitValue][topicValue];
+                return unitBankStatsCache.by_topic[activeGroup][unitValue][topicValue] || { total: 0, solved: 0, remaining: 0 };
             }
             const key = `${unitValue}|||${topicValue}`;
             return (unitBankStatsCache.topics && unitBankStatsCache.topics[key]) || { total: 0, solved: 0, remaining: 0 };
