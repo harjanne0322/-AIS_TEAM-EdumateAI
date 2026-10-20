@@ -44,3 +44,17 @@ class HanjaStorage:
             rows=session.scalars(select(QuizLog).where(QuizLog.owner==owner).order_by(QuizLog.created_at.desc(),QuizLog.question_id).limit(limit).offset(offset)).all()
             fields=['question_id','question_type','question','character','grade','submitted_answer','expected_answer','score','base_score','correct','feedback']
             return {'total_score':int(score),'answered_count':int(count),'correct_count':int(correct),'items':[{**{k:getattr(row,k) for k in fields},'created_at':row.created_at.isoformat()+'Z'} for row in rows]}
+
+    def submission(self,qid,owner):
+        with self.sessions() as session:
+            row=session.get(QuizLog,qid)
+            if row is None or row.owner!=owner:return None
+            return row.submitted_answer
+
+    def apply_appeal(self,qid,owner,result):
+        with self.sessions.begin() as session:
+            row=session.get(QuizLog,qid)
+            if row is None or row.owner!=owner:raise LookupError('없는 풀이입니다.')
+            row.score=result['score'];row.correct=result['correct']
+            row.feedback=result['feedback'];row.result=dict(result)
+        return result

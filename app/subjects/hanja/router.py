@@ -35,6 +35,11 @@ class AnswerRequest(BaseModel):
     answer: str = Field(default="", max_length=2000)
 
 
+class AppealRequest(BaseModel):
+    question_id: str = Field(min_length=1,max_length=100)
+    reason: str = Field(min_length=1,max_length=1000)
+
+
 class SentenceRequest(BaseModel):
     sentence_id: str = Field(min_length=1, max_length=100)
 
@@ -86,6 +91,7 @@ def create_router(prefix='/hanja', score_hook=None, storage=None):
             if isinstance(name,str) and name.strip():return 'portal:'+name.strip()
         return original_learner(request)
     sessions = {}
+    appeal_lock = asyncio.Lock()
     lock = threading.Lock()
 
     @router.get('/', response_class=HTMLResponse)
@@ -264,6 +270,7 @@ def create_router(prefix='/hanja', score_hook=None, storage=None):
         with lock:
             q = sessions.get(body.question_id) or storage.question(body.question_id,owner)
             if not q or q['expires'] < time.monotonic():raise HTTPException(404,'문제가 만료되었습니다.')
+            if q.get('r',{}).get('kind')=='bank':raise HTTPException(422,'문제은행 채점 경로를 사용해 주세요.')
             owner = learner(request)
             if owner != q['owner']:raise HTTPException(403,'다른 학습자의 문제입니다.')
             grading_lock=q.setdefault('grading_lock',asyncio.Lock())
@@ -286,6 +293,8 @@ def create_router(prefix='/hanja', score_hook=None, storage=None):
                     from .answer_grader import grade_meaning_reading
                     earned=grade_meaning_reading(r,body.answer)
                 result={'score':earned,'base_score':max_score,'correct':earned==max_score,'answer':q['answer'] if earned!=max_score else None,'explanation':f"{r['character']}는 {r['meaning']} {r['reading']}입니다.",'grading_method':'뜻·음 일치 기준 (AI 문맥 채점 아님)','central_score_status':'not_configured'}
+            result['ai_graded']=bool(result.get('ai_graded',False))
+            result['appeal_available']=not result['ai_graded']
             try:
                 result=team_db.save_result(account,body.question_id,q,body.answer,result)
                 result=storage.record(body.question_id,q,body.answer,result)
@@ -300,6 +309,45 @@ def create_router(prefix='/hanja', score_hook=None, storage=None):
                 except Exception:
                     result['central_score_status']='failed'
         return result
+    @router.post('/api/appeal')
+    async def appeal(body: AppealRequest, request: Request):
+        owner=learner(request)
+        # 동시 클릭/재시도도 동일한 기존 풀이 한 건만 갱신한다.
+        async with appeal_lock:
+            previous=storage.result(body.question_id,owner)
+            if previous is None:raise HTTPException(404,'본인의 채점된 문제만 재검토할 수 있어요.')
+            if previous.get('appeal_reviewed'):return previous
+            if previous.get('ai_graded') or not previous.get('appeal_available'):
+                raise HTTPException(409,'기본 채점 결과에만 이의제기를 할 수 있어요.')
+            if not body.reason.strip():raise HTTPException(422,'이의 사유를 적어 주세요.')
+            q=storage.question(body.question_id,owner)
+            if q is None:raise HTTPException(404,'문제 기록을 찾을 수 없어요.')
+            from .ai_grader import review_appeal
+            try:
+                result=await review_appeal(q,storage.submission(body.question_id,owner),body.reason.strip(),previous)
+            except Exception:raise HTTPException(503,'AI 재검토에 실패했어요. 점수는 유지됩니다. 잠시 후 다시 시도해 주세요.')
+            try:
+                account=identity(request)
+                if q['r'].get('kind')=='bank':
+                    from . import question_bank as bank
+                    bank_id=q['r']['bank_row'].get('id')
+                    if bank_id:
+                        with bank.connection() as conn:
+                            conn.execute('BEGIN IMMEDIATE')
+                            review=previous.get('review') or bank.group_is_solved(conn,bank_id,bank.user_key(account))
+                            if review:result.update(added_score=0,review=True)
+                            if result.get('log_id') and not review:team_db.apply_appeal(result['log_id'],account[0],account[3],result)
+                            if result['correct']:bank.mark_bank_question_solved(conn,bank_id,bank.user_key(account))
+                    elif result.get('log_id'):team_db.apply_appeal(result['log_id'],account[0],account[3],result)
+                elif result.get('log_id'):team_db.apply_appeal(result['log_id'],account[0],account[3],result)
+                storage.apply_appeal(body.question_id,owner,result)
+            except Exception:raise HTTPException(503,'재검토 결과를 저장하지 못했어요. 다시 시도해 주세요.')
+            with lock:
+                if body.question_id in sessions:sessions[body.question_id]['result']=result
+            return result
+
+    from .bank_router import create_bank_router
+    router.include_router(create_bank_router(identity,learner,storage))
     return router
 
 router = create_router()
