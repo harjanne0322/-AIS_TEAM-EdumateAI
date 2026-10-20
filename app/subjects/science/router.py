@@ -53,6 +53,7 @@ try:
         save_problem_report,
         get_problem_reports,
         sync_saved_results_to_wrong_notes,
+        sync_quiz_logs_to_wrong_notes,
         mark_wrong_note_mastered,
         db_mode
     )
@@ -94,6 +95,7 @@ except ImportError:
         save_problem_report,
         get_problem_reports,
         sync_saved_results_to_wrong_notes,
+        sync_quiz_logs_to_wrong_notes,
         mark_wrong_note_mastered,
         db_mode
     )
@@ -684,10 +686,13 @@ async def remove_wrong_note(note_id: int):
 
 
 @router.post("/api/wrong-notes/sync")
-async def sync_wrong_notes_from_saved():
-    """saved_results 폴더에 보관된 과거 채점 파일에서 감점된 문제들을 오답노트에 동기화"""
+async def sync_wrong_notes_from_saved(
+    user_name: Optional[str] = Query(default=None),
+    user_id: Optional[str] = Query(default=None)
+):
+    """중앙 DB(edumate.db의 quiz_logs) 및 과거 채점 파일의 과학 오답을 오답노트에 동기화"""
     try:
-        count = sync_saved_results_to_wrong_notes()
+        count = sync_quiz_logs_to_wrong_notes(user_name=user_name, user_id=user_id)
         return JSONResponse(content={"status": "success", "synced_count": count})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -875,8 +880,11 @@ async def standalone_remove_wrong_note(note_id: int):
 
 
 @app.post("/api/wrong-notes/sync")
-async def standalone_sync_wrong_notes():
-    return await sync_wrong_notes_from_saved()
+async def standalone_sync_wrong_notes(
+    user_name: Optional[str] = Query(default=None),
+    user_id: Optional[str] = Query(default=None)
+):
+    return await sync_wrong_notes_from_saved(user_name=user_name, user_id=user_id)
 
 
 @app.post("/api/wrong-notes/{note_id}/master")

@@ -2645,33 +2645,85 @@
       }
     }
 
-    // 중앙 통합 로그인 계정 및 포켓몬 진화 정보 안전 복원
+    // 중앙 통합 로그인 계정 및 포켓몬 진화 정보 안전 복원 (마이페이지 및 통합 로비 세션 100% 호환)
     function getStoredUserName() {
-      const directName = localStorage.getItem("edumate_math_user_name");
-      if (directName) return directName;
+      // 1. URL 파라미터 우선 확인
       try {
-        const raw = localStorage.getItem("edumate_current_account");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (typeof parsed === "object" && parsed.name) return parsed.name;
-          if (typeof parsed === "string") return parsed;
+        const urlParams = new URLSearchParams(window.location.search);
+        const qName = urlParams.get("user_name") || urlParams.get("userName") || urlParams.get("name");
+        if (qName && qName.trim()) {
+          const cleanName = qName.trim();
+          localStorage.setItem("edumate_user_name", cleanName);
+          return cleanName;
         }
       } catch (e) {}
+
+      // 2. localStorage 및 sessionStorage 키 종합 스캔
+      const directName = localStorage.getItem("edumate_user_name") ||
+                         sessionStorage.getItem("edumate_user_name") ||
+                         localStorage.getItem("userName") ||
+                         localStorage.getItem("user_name") ||
+                         sessionStorage.getItem("user_name") ||
+                         localStorage.getItem("edumate_math_user_name") ||
+                         sessionStorage.getItem("userName");
+      if (directName && directName.trim()) return directName.trim();
+
+      // 3. JSON 계정 객체 스캔
+      const jsonKeys = ["edumate_current_account", "currentUser", "edumate_user", "userInfo"];
+      for (const key of jsonKeys) {
+        try {
+          const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === "object" && (parsed.name || parsed.user_name || parsed.userName)) {
+              return (parsed.name || parsed.user_name || parsed.userName).trim();
+            }
+            if (typeof parsed === "string" && parsed.trim()) return parsed.trim();
+          }
+        } catch (e) {}
+      }
+
       return "김에듀";
     }
 
     function getStoredUserId() {
-      const directId = localStorage.getItem("currentUserId") || localStorage.getItem("edumate_user_id") || localStorage.getItem("edumate_math_user_id");
-      if (directId) return directId;
+      // 1. URL 파라미터 우선 확인
       try {
-        const raw = localStorage.getItem("edumate_current_account");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (typeof parsed === "object") {
-            return parsed.user_id || parsed.userId || parsed.id || null;
-          }
+        const urlParams = new URLSearchParams(window.location.search);
+        const qId = urlParams.get("user_id") || urlParams.get("userId") || urlParams.get("id");
+        if (qId && qId.trim()) {
+          const cleanId = qId.trim();
+          localStorage.setItem("edumate_user_id", cleanId);
+          return cleanId;
         }
       } catch (e) {}
+
+      // 2. localStorage 및 sessionStorage 키 종합 스캔
+      const directId = localStorage.getItem("edumate_user_id") ||
+                       sessionStorage.getItem("edumate_user_id") ||
+                       localStorage.getItem("currentUserId") ||
+                       sessionStorage.getItem("currentUserId") ||
+                       localStorage.getItem("userId") ||
+                       localStorage.getItem("user_id") ||
+                       sessionStorage.getItem("userId") ||
+                       localStorage.getItem("edumate_math_user_id");
+      if (directId && String(directId).trim()) return String(directId).trim();
+
+      // 3. JSON 계정 객체 스캔
+      const jsonKeys = ["edumate_current_account", "currentUser", "edumate_user", "userInfo"];
+      for (const key of jsonKeys) {
+        try {
+          const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === "object") {
+              const foundId = parsed.user_id || parsed.userId || parsed.id || parsed.student_id;
+              if (foundId && String(foundId).trim()) return String(foundId).trim();
+            }
+          }
+        } catch (e) {}
+      }
+
       return null;
     }
 
@@ -4116,15 +4168,18 @@
       // 호환용 더미
     }
 
-    // 기존 채점 기록(saved_results) 오답 수동 동기화 함수
+    // 기존 채점 기록(edumate.db / saved_results) 오답 수동 동기화 함수
     async function syncSavedResultsToWrongNotesUI() {
       const countBadge = document.getElementById("wrongNotesCountBadge");
-      countBadge.textContent = "동기화 중...";
+      if (countBadge) countBadge.textContent = "동기화 중...";
       try {
-        const res = await fetch(`${API_BASE}/api/wrong-notes/sync`, { method: "POST" });
+        const uName = getStoredUserName();
+        const uId = getStoredUserId();
+        const uidParam = uId ? `&user_id=${encodeURIComponent(uId)}` : '';
+        const res = await fetch(`${API_BASE}/api/wrong-notes/sync?user_name=${encodeURIComponent(uName)}${uidParam}`, { method: "POST" });
         const json = await res.json();
         const synced = json.synced_count || 0;
-        alert(`📥 기존 채점 기록에서 ${synced}건의 틀린 문제를 성공적으로 불러와 오답노트에 반영했습니다! 🎉`);
+        alert(`📥 중앙 DB 및 채점 기록에서 ${synced}건의 틀린 문제를 성공적으로 불러와 오답노트에 반영했습니다! 🎉`);
         loadWrongNotes();
       } catch (err) {
         alert("기존 기록 동기화 중 오류가 발생했습니다: " + err.message);
@@ -4132,18 +4187,21 @@
       }
     }
 
-    // 오답 목록 서버에서 불러오기 (학생 계정별 격리)
+    // 오답 목록 서버에서 불러오기 (중앙 DB 자동 동기화 & 학생 계정별 격리)
     async function loadWrongNotes() {
       const container = document.getElementById("wrongNotesContainer");
-      const gradeSel = document.getElementById("wrongFilterGrade").value;
-      const typeSel = document.getElementById("wrongFilterType").value;
+      const gradeSel = document.getElementById("wrongFilterGrade") ? document.getElementById("wrongFilterGrade").value : "0";
+      const typeSel = document.getElementById("wrongFilterType") ? document.getElementById("wrongFilterType").value : "all";
       const countBadge = document.getElementById("wrongNotesCountBadge");
 
-      container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 24px; font-size: 13.5px;">오답노트를 불러오는 중...</p>`;
+      container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 24px; font-size: 13.5px;">🔄 중앙 DB 오답 동기화 및 오답노트를 불러오는 중...</p>`;
 
       try {
         const uName = getStoredUserName();
         const uId = getStoredUserId();
+        currentAccount = uName;
+        currentUserId = uId;
+
         const uidParam = uId ? `&user_id=${encodeURIComponent(uId)}` : '';
 
         let url = `${API_BASE}/api/wrong-notes?user_name=${encodeURIComponent(uName)}${uidParam}&`;

@@ -339,7 +339,18 @@ def get_wrong_notes(
     user_name: Optional[str] = None,
     user_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """저장된 오답 목록 최신순 조회 (학생 계정별 격리 & 학년/유형 필터링 지원)"""
+    """
+    저장된 오답 목록 최신순 조회
+    - 중앙 DB(edumate.db의 quiz_logs)를 자동으로 스캔하여 새 오답을 동기화(insert)
+    - 학생 계정별 격리 & 학년/유형 필터링 지원
+    """
+    # 1. 중앙 DB의 과학 오답을 quiz_wrong_notes로 자동 동기화
+    try:
+        sync_quiz_logs_to_wrong_notes(user_name=user_name, user_id=user_id)
+    except Exception as e:
+        print(f"[오답 자동 동기화 예외] {e}")
+
+    # 2. 로컬 quiz_wrong_notes 테이블에서 최신 오답 조회
     db: Session = SessionLocal()
     try:
         stmt = select(QuizWrongNote)
@@ -440,82 +451,198 @@ def mark_wrong_note_mastered(note_id: int) -> bool:
 
 
 
-def sync_saved_results_to_wrong_notes() -> int:
+def sync_quiz_logs_to_wrong_notes(
+    user_name: Optional[str] = None,
+    user_id: Optional[str] = None
+) -> int:
     """
-    edumate.db의 quiz_logs 테이블 및 saved_results/ 폴더의 채점 기록을 스캔하여,
-    오답(is_correct = 0 또는 score < 5)인 문제들을 오답노트(quiz_wrong_notes)에 자동 동기화합니다.
+    중앙 DB(edumate.db의 quiz_logs 테이블) 및 saved_results/ 폴더의 채점 기록을 자동 스캔하여,
+    subject='science'이고 (is_correct=0 또는 earned_score < 만점)인 오답 데이터들을
+    과학 전용 오답노트(quiz_wrong_notes)에 자동 동기화(insert)합니다.
     """
+    import sqlite3
     db: Session = SessionLocal()
     imported_count = 0
+    clean_name = (user_name or "").strip() or None
+    clean_id = (user_id or "").strip() or None
+
     try:
-        # 기존 등록된 지문+답안 목록 미리 조회 (중복 방지용)
+        # 기존 등록된 지문 목록 미리 조회 (중복 방지용: 학생 키 + 지문)
         existing_notes = db.scalars(select(QuizWrongNote)).all()
-        existing_keys = {(n.question, n.student_answer) for n in existing_notes}
+        existing_keys = set()
+        for n in existing_notes:
+            q_clean = (n.question or "").strip()
+            u_clean = (n.user_id or n.user_name or "").strip()
+            if q_clean:
+                if u_clean:
+                    existing_keys.add((u_clean, q_clean))
+                existing_keys.add(q_clean)
 
-        # 1. edumate.db 의 quiz_logs 테이블에서 오답 추출
-        edumate_db_candidates = [
+        # 1. 중앙 edumate.db 후보 경로 안전 탐색
+        candidates = [
             current_dir / "edumate.db",
+            current_dir.parent / "edumate.db",
             current_dir.parent / "data" / "edumate.db",
-            current_dir.parent.parent / "data" / "edumate.db"
+            current_dir.parent.parent / "edumate.db",
+            current_dir.parent.parent / "data" / "edumate.db",
+            current_dir.parent.parent.parent / "data" / "edumate.db",
+            DATA_DIR / "edumate.db"
         ]
-        target_edumate_db = None
-        for cand in edumate_db_candidates:
-            if cand.exists():
-                target_edumate_db = cand
-                break
 
-        if target_edumate_db:
+        valid_dbs = []
+        for p in candidates:
+            if p.exists() and p not in valid_dbs:
+                valid_dbs.append(p)
+
+        for target_db in valid_dbs:
             try:
-                import sqlite3
-                e_conn = sqlite3.connect(str(target_edumate_db))
-                e_conn.row_factory = sqlite3.Row
-                e_cur = e_conn.cursor()
-                e_cur.execute(
-                    """
-                    SELECT id, quiz_id, grade, unit, question_type, question, user_answer,
-                           correct_answer, solution, earned_score, is_correct, solved_at
-                    FROM quiz_logs
-                    WHERE subject = 'science' AND (is_correct = 0 OR (question_type = 'subjective' AND earned_score < 5))
-                    ORDER BY id DESC
-                    """
-                )
-                rows = e_cur.fetchall()
+                conn = sqlite3.connect(str(target_db))
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+
+                # quiz_logs 테이블 존재 여부 확인
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='quiz_logs'")
+                if not cur.fetchone():
+                    conn.close()
+                    continue
+
+                # 테이블 컬럼 스캔
+                cur.execute("PRAGMA table_info(quiz_logs)")
+                cols = {row["name"] for row in cur.fetchall()}
+
+                has_uid = "user_id" in cols
+                has_uname = "user_name" in cols
+                has_allotted = "allotted_score" in cols
+                has_options = "options" in cols
+                has_solution = "solution" in cols
+                has_analysis = "ai_analysis" in cols
+                has_solved_at = "solved_at" in cols
+                has_created_at = "created_at" in cols
+
+                # 조건절 동적 구성
+                where_clauses = ["subject = 'science'"]
+                params: List[Any] = []
+
+                # 오답 조건: is_correct가 0(또는 false)이거나, 서술형 감점, 배점 미달
+                if has_allotted:
+                    where_clauses.append(
+                        "(is_correct = 0 OR is_correct IS NULL OR "
+                        "(allotted_score IS NOT NULL AND earned_score < allotted_score) OR "
+                        "(question_type = 'subjective' AND earned_score < 5))"
+                    )
+                else:
+                    where_clauses.append(
+                        "(is_correct = 0 OR is_correct IS NULL OR "
+                        "(question_type = 'subjective' AND earned_score < 5) OR earned_score = 0)"
+                    )
+
+                # 사용자 필터 (특정 사용자로 조회하는 경우 해당 사용자 데이터 우선 스캔)
+                if clean_id and has_uid:
+                    if clean_name and has_uname:
+                        where_clauses.append("(user_id = ? OR user_name = ?)")
+                        params.extend([clean_id, clean_name])
+                    else:
+                        where_clauses.append("user_id = ?")
+                        params.append(clean_id)
+                elif clean_name and has_uname:
+                    where_clauses.append("user_name = ?")
+                    params.append(clean_name)
+
+                query = f"SELECT * FROM quiz_logs WHERE {' AND '.join(where_clauses)} ORDER BY id DESC"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+
                 for r in rows:
-                    q_text = r["question"] or ""
-                    s_ans = r["user_answer"] or ""
+                    q_text = (r["question"] or "").strip()
                     if not q_text:
                         continue
-                    if (q_text, s_ans) in existing_keys:
+
+                    r_uid = str(r["user_id"]).strip() if (has_uid and r["user_id"]) else (clean_id or None)
+                    r_uname = str(r["user_name"]).strip() if (has_uname and r["user_name"]) else (clean_name or "김에듀")
+                    user_key = r_uid or r_uname
+
+                    # 중복 검사: 동일 학생에게 동일 지문이 이미 오답노트에 있으면 건너뜀
+                    if (user_key, q_text) in existing_keys:
                         continue
 
+                    # 일시 파싱
                     solved_dt = datetime.now()
-                    if r["solved_at"]:
+                    time_raw = None
+                    if has_solved_at and r["solved_at"]:
+                        time_raw = str(r["solved_at"])
+                    elif has_created_at and r["created_at"]:
+                        time_raw = str(r["created_at"])
+
+                    if time_raw:
                         try:
-                            solved_dt = datetime.strptime(r["solved_at"][:19], "%Y-%m-%d %H:%M:%S")
+                            solved_dt = datetime.strptime(time_raw[:19], "%Y-%m-%d %H:%M:%S")
                         except Exception:
                             pass
 
+                    # 유형 정규화
+                    raw_type = str(r["question_type"] or "ox").lower()
+                    if "ox" in raw_type:
+                        norm_type = "ox"
+                    elif "mcq" in raw_type or "선다" in raw_type or "choice" in raw_type or "객관" in raw_type:
+                        norm_type = "mcq"
+                    elif "subj" in raw_type or "서술" in raw_type or "단답" in raw_type:
+                        norm_type = "subjective"
+                    else:
+                        norm_type = "ox"
+
+                    # 피드백 내용
+                    fb_text = ""
+                    if has_solution and r["solution"]:
+                        fb_text = str(r["solution"])
+                    elif has_analysis and r["ai_analysis"]:
+                        fb_text = str(r["ai_analysis"])
+
+                    # 보기(options) 문자열
+                    opts_val = None
+                    if has_options and r["options"]:
+                        opt_str = str(r["options"]).strip()
+                        if opt_str.startswith("[") and opt_str.endswith("]"):
+                            opts_val = opt_str
+
+                    score_val = 0
+                    try:
+                        score_val = int(r["earned_score"] or 0)
+                    except Exception:
+                        score_val = 0
+
+                    grade_val = 3
+                    try:
+                        grade_val = int(r["grade"] or 3)
+                    except Exception:
+                        grade_val = 3
+
                     note = QuizWrongNote(
                         problem_id=r["id"],
-                        grade=r["grade"] or 3,
-                        unit=r["unit"] or "총정리",
-                        quiz_type=r["question_type"] or "ox",
+                        user_id=r_uid,
+                        user_name=r_uname,
+                        grade=grade_val,
+                        unit=str(r["unit"] or "총정리"),
+                        quiz_type=norm_type,
                         question=q_text,
-                        correct_answer=r["correct_answer"] or "",
-                        student_answer=s_ans,
-                        score=r["earned_score"] or 0,
-                        feedback=r["solution"] or "",
-                        deduction_reason="quiz_logs 오답 기록",
+                        options=opts_val,
+                        student_answer=str(r["user_answer"] or ""),
+                        correct_answer=str(r["correct_answer"] or ""),
+                        score=score_val,
+                        feedback=fb_text,
+                        deduction_reason="quiz_logs 중앙 기록 자동 동기화",
+                        is_mastered=False,
                         created_at=solved_dt
                     )
                     db.add(note)
-                    existing_keys.add((q_text, s_ans))
+                    existing_keys.add((user_key, q_text))
+                    existing_keys.add(q_text)
                     imported_count += 1
-                e_conn.close()
-            except Exception as e_err:
-                print(f"[edumate.db 오답 동기화 알림] {e_err}")
 
-        # 2. saved_results/ 폴더에 보관된 과거 채점 기록 보조 탐색 (하위 호환)
+                conn.close()
+            except Exception as e_db:
+                print(f"[edumate.db 동기화 알림 - {target_db.name}] {e_db}")
+
+        # 2. saved_results/ 폴더 보조 탐색 (하위 호환)
         saved_results_dir = current_dir / "saved_results"
         if saved_results_dir.exists():
             json_files = sorted(saved_results_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
@@ -545,14 +672,17 @@ def sync_saved_results_to_wrong_notes() -> int:
                     if sc < 5:
                         q_id = res.get("id")
                         q_info = ans_map.get(q_id, {})
-                        q_text = q_info.get("question", "")
-                        s_ans = q_info.get("student_answer", "")
+                        q_text = (q_info.get("question") or "").strip()
+                        s_ans = (q_info.get("student_answer") or "").strip()
 
-                        if not q_text or (q_text, s_ans) in existing_keys:
+                        user_key = clean_id or clean_name or "김에듀"
+                        if not q_text or (user_key, q_text) in existing_keys:
                             continue
 
                         note = QuizWrongNote(
                             problem_id=q_id,
+                            user_id=clean_id,
+                            user_name=clean_name or "김에듀",
                             grade=grade,
                             unit=unit,
                             quiz_type="subjective",
@@ -561,23 +691,30 @@ def sync_saved_results_to_wrong_notes() -> int:
                             student_answer=s_ans,
                             score=sc,
                             feedback=res.get("feedback", ""),
-                            deduction_reason=res.get("analysis", ""),
+                            deduction_reason=res.get("analysis", "saved_results 기록 동기화"),
+                            is_mastered=False,
                             created_at=file_created_at
                         )
                         db.add(note)
-                        existing_keys.add((q_text, s_ans))
+                        existing_keys.add((user_key, q_text))
+                        existing_keys.add(q_text)
                         imported_count += 1
 
         if imported_count > 0:
             db.commit()
-            print(f"[오답 기록 동기화 완료] 총 {imported_count}건의 오답이 오답노트에 반영되었습니다.")
+            print(f"[오답 동기화 완료] 총 {imported_count}건의 오답이 quiz_wrong_notes에 성공적으로 반영되었습니다.")
     except Exception as e:
         db.rollback()
-        print(f"[동기화 실패] {e}")
+        print(f"[오답 동기화 실패] {e}")
     finally:
         db.close()
 
     return imported_count
+
+
+def sync_saved_results_to_wrong_notes() -> int:
+    """하위 호환용 래퍼 함수"""
+    return sync_quiz_logs_to_wrong_notes()
 
 
 def save_problem_report(
