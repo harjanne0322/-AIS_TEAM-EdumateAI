@@ -115,6 +115,7 @@ class RegisterRequest(BaseModel):
     password_confirm: str = Field(..., description="비밀번호 확인")
     user_name: str = Field(..., description="학생 이름")
     grade: int = Field(default=4, description="학생 학년 (1~6)")
+    guest_id: Optional[str] = Field(default=None, description="이관할 비회원 게스트 세션 아이디")
 
 
 
@@ -252,7 +253,7 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=500, detail=f"로그인 처리 실패: {str(e)}")
 
 
-@router.post("/register", summary="학생 신규 회원가입")
+@router.post("/register", summary="학생 신규 회원가입 (비회원 풀이기록 안전 이관 지원)")
 async def register(req: RegisterRequest):
     """학생이 아이디, 비번, 비번확인, 이름, 학년으로 직접 회원가입합니다."""
     try:
@@ -262,12 +263,25 @@ async def register(req: RegisterRequest):
             password_confirm=req.password_confirm,
             user_name=req.user_name,
             grade=req.grade,
+            guest_id=req.guest_id,
         )
         return {"status": "success", "message": "회원가입이 완료되었습니다!", "user": user_data}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"회원가입 처리 실패: {str(e)}")
+
+
+@router.post("/guest/clear", summary="비회원 로그아웃 시 임시 문제풀이 기록 증발(삭제)")
+async def clear_guest(req: Dict[str, Any]):
+    """비회원 체험 중 풀었던 임시 로그를 로그아웃 시 완전 삭제합니다."""
+    try:
+        from app.database.quiz_manager import clear_guest_logs
+        guest_id = str(req.get("guest_id") or "").strip()
+        deleted = clear_guest_logs(guest_id)
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        return {"status": "success", "deleted": 0}
 
 
 
