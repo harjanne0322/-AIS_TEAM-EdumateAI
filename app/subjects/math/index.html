@@ -127,15 +127,18 @@
                 </div>
 
                 <!-- AI 기반 출제 토글 스위치 (ON: AI 실시간 출제 / OFF: 문제은행 DB 출제) -->
-                <div class="flex items-center gap-3 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200 self-start sm:self-auto">
+                <div id="aiModeToggleCard" onclick="toggleAiGenerationMode()" role="button" tabindex="0"
+                    onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleAiGenerationMode(); }"
+                    class="flex items-center gap-3.5 bg-blue-50/70 hover:bg-blue-100/70 px-4 py-2.5 rounded-2xl border border-blue-200 transition-all cursor-pointer select-none self-start sm:self-auto shadow-2xs group"
+                    title="클릭하여 AI 기반 실시간 출제 / 문제은행 DB 출제 모드를 전환합니다">
                     <div class="text-right">
                         <div class="flex items-center justify-end gap-1.5">
-                            <span id="aiModeToggleLabel" class="text-xs font-extrabold text-blue-700">🤖 AI 기반 출제</span>
-                            <span id="aiModeStatusPill" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200">ON</span>
+                            <span id="aiModeToggleLabel" class="text-xs font-extrabold text-blue-700 transition-colors">🤖 AI 기반 출제</span>
+                            <span id="aiModeStatusPill" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white shadow-xs transition-colors">ON</span>
                         </div>
-                        <p id="aiModeSubDesc" class="text-[11px] text-slate-500 font-medium">OFF 시 문제은행 DB 문제로 출제됩니다</p>
+                        <p id="aiModeSubDesc" class="text-[11px] text-slate-500 font-medium transition-colors">OFF 시 문제은행 DB 문제로 출제됩니다</p>
                     </div>
-                    <button type="button" id="btnToggleAiMode" onclick="toggleAiGenerationMode()" role="switch" aria-checked="true"
+                    <button type="button" id="btnToggleAiMode" onclick="event.stopPropagation(); toggleAiGenerationMode()" role="switch" aria-checked="true"
                         class="relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner"
                         title="AI 기반 출제 ON / 문제은행 출제 OFF 전환">
                         <span id="btnToggleAiModeKnob"
@@ -1975,6 +1978,10 @@
                 savedUserName = sanitizeUserName(sessionAcc.name || sessionAcc.user_name || "김에듀");
                 savedUserId = sessionAcc.id || sessionAcc.user_id || "";
                 savedUserRole = sessionAcc.role || "student";
+                if (sessionAcc.grade) currentUserGrade = parseInt(sessionAcc.grade, 10) || 4;
+                if (Array.isArray(sessionAcc.managed_subjects)) currentManagedSubjects = sessionAcc.managed_subjects;
+                if (Array.isArray(sessionAcc.managed_subjects_kr)) currentManagedSubjectsKr = sessionAcc.managed_subjects_kr;
+                if (sessionAcc.role_display) currentRoleDisplay = sessionAcc.role_display;
             } else {
                 const rawSavedUserName = localStorage.getItem("edumate_math_user_name");
                 savedUserName = sanitizeUserName(rawSavedUserName);
@@ -2004,6 +2011,10 @@
                 onDifficultyChange();
                 onQuestionTypeChange();
             } catch (e) {}
+
+            // 헤더 및 인증 UI 즉시 반영 (비동기 DB 조회 완료 전이라도 회원 정보 및 레벨 즉시 표출)
+            updateAuthUI();
+            updateHeaderScore();
 
             // 1) SQLite 통합 DB(quiz_logs)에서 학생 학년 및 영구 누적 총점 불러오기
             try {
@@ -3676,6 +3687,7 @@
 
         async function setAiGenerationMode(enableAi, autoSwitchMessage = "") {
             isAiGenerationMode = Boolean(enableAi);
+            const card = document.getElementById("aiModeToggleCard");
             const btnToggle = document.getElementById("btnToggleAiMode");
             const knob = document.getElementById("btnToggleAiModeKnob");
             const label = document.getElementById("aiModeToggleLabel");
@@ -3686,6 +3698,9 @@
             const bannerText = document.getElementById("aiAutoSwitchBannerText");
 
             if (isAiGenerationMode) {
+                if (card) {
+                    card.className = "flex items-center gap-3.5 bg-blue-50/70 hover:bg-blue-100/70 px-4 py-2.5 rounded-2xl border border-blue-200 transition-all cursor-pointer select-none self-start sm:self-auto shadow-2xs group";
+                }
                 if (btnToggle) {
                     btnToggle.className = "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 bg-blue-600 transition-colors duration-200 ease-in-out focus:outline-none shadow-inner";
                     btnToggle.setAttribute("aria-checked", "true");
@@ -3695,11 +3710,11 @@
                 }
                 if (label) {
                     label.innerText = "🤖 AI 기반 출제";
-                    label.className = "text-xs font-extrabold text-blue-700";
+                    label.className = "text-xs font-extrabold text-blue-700 transition-colors";
                 }
                 if (pill) {
                     pill.innerText = "ON";
-                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200";
+                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white shadow-xs transition-colors";
                 }
                 if (subDesc) {
                     subDesc.innerText = "OFF 시 문제은행 DB 문제로 출제됩니다";
@@ -3714,6 +3729,9 @@
                     banner.classList.add("hidden");
                 }
             } else {
+                if (card) {
+                    card.className = "flex items-center gap-3.5 bg-emerald-50/70 hover:bg-emerald-100/70 px-4 py-2.5 rounded-2xl border border-emerald-300 transition-all cursor-pointer select-none self-start sm:self-auto shadow-2xs group";
+                }
                 if (autoSwitchMessage && banner && bannerText) {
                     bannerText.innerText = autoSwitchMessage;
                     banner.classList.remove("hidden");
@@ -3729,11 +3747,11 @@
                 }
                 if (label) {
                     label.innerText = "📚 문제은행 출제 (AI OFF)";
-                    label.className = "text-xs font-extrabold text-emerald-700";
+                    label.className = "text-xs font-extrabold text-emerald-700 transition-colors";
                 }
                 if (pill) {
                     pill.innerText = "OFF (문제은행)";
-                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300";
+                    pill.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-xs transition-colors";
                 }
                 if (subDesc) {
                     subDesc.innerText = "단원별 (맞춘 문제/전체 은행문제) 현황이 표시됩니다";
@@ -6515,21 +6533,6 @@
 
                 listEl.appendChild(card);
             });
-
-            renderLatex(listEl);
-
-            // 이미 펼쳐진 상태로 렌더링된 카드들의 차트 초기화
-            expandedHistoryCardIds.forEach(logId => {
-                const inits = window._historyChartInitMap[logId];
-                if (Array.isArray(inits) && inits.length > 0) {
-                    setTimeout(() => {
-                        inits.forEach(fn => {
-                            try { fn(); } catch (e) { console.error("차트 렌더 실패:", e); }
-                        });
-                    }, 50);
-                }
-            });
-        }
 
             renderLatex(listEl);
 
