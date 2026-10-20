@@ -18,7 +18,7 @@ def save_result(identity,qid,q,answer,result):
         # 최신 모듈은 학년 캐시를 먼저 설정해야 신규 이름 저장시 KeyError를 피함.
         shared.get_user_status(name,grade,ptype,user_id)
         data=shared.save_quiz_log(user_name=name,user_id=user_id,quiz_id=qid,grade=grade,
-            unit=('사자성어' if r.get('kind')=='idiom' else '실용 한자어' if r.get('kind')=='practical_word' else str(r.get('grade'))+'급' if r.get('grade') else None),
+            unit=r.get('unit_name') or ('사자성어' if r.get('kind')=='idiom' else '실용 한자어' if r.get('kind')=='practical_word' else str(r.get('grade'))+'급' if r.get('grade') else None),
             topic=r.get('original') if r.get('kind')=='idiom' else r.get('target_word') or r.get('character'),
             difficulty=public.get('difficulty'),question_type=public.get('question_type'),question=public['question'],user_answer=answer,
             correct_answer=q.get('answer') or r.get('model_answer') or r.get('reading'),solution=result.get('feedback') or result.get('explanation'),
@@ -78,4 +78,16 @@ def history(name,limit=50,offset=0,user_id=None):
             rows=conn.execute(select(t).where(owner_filter(t,name,user_id),t.c.subject=='hanja').order_by(t.c.id.desc()).limit(limit).offset(offset)).mappings().all()
             count,correct=conn.execute(select(func.count(),func.coalesce(func.sum(t.c.is_correct),0)).where(owner_filter(t,name,user_id),t.c.subject=='hanja')).one()
             return {'total_score':shared.get_user_status(name,user_id=user_id)['total_score'],'answered_count':count,'correct_count':correct,'items':[{'log_id':r['id'],'question_id':r['quiz_id'],'question':r['question'],'character':r['topic'],'question_type':r['question_type'],'base_score':{'multiple_choice':1,'ox':1,'short_answer':3,'essay':5,'practical_word':1,'sentence_essay':5}.get(r['question_type']),'correct':bool(r['is_correct']),'grade':r['grade'],'submitted_answer':r['user_answer'],'expected_answer':r['correct_answer'],'feedback':r['solution'],'score':r['earned_score'],'created_at':r['solved_at'],'is_favorite':bool(r['is_favorite']),'chat_history':json.loads(r['chat_history']) if r['chat_history'] else None} for r in rows]}
+    finally:engine.dispose()
+
+def apply_appeal(log_id,name,user_id,result):
+    """풀이 한 건을 갱신하므로 재시도에도 점수가 중복 지급되지 않는다."""
+    engine,t=table()
+    try:
+        with LOCK,engine.begin() as conn:
+            row=conn.execute(select(t).where(t.c.id==log_id,owner_filter(t,name,user_id),t.c.subject=='hanja')).mappings().first()
+            if row is None:raise LookupError('없는 학습 기록입니다.')
+            score=max(row['earned_score'],result['score'])
+            conn.execute(update(t).where(t.c.id==log_id).values(
+                earned_score=score,is_correct=int(score==result['base_score']),solution=result['feedback']))
     finally:engine.dispose()
