@@ -1134,9 +1134,19 @@
                 if (u.user_id && u.user_id !== "guest") currentUserId = u.user_id;
                 if (u.role) currentUserRole = u.role;
                 if (u.user_name) {
-                    localStorage.setItem("edumate_math_user_name", u.user_name);
+                    const cleanUName = sanitizeUserName(u.user_name);
+                    localStorage.setItem("edumate_math_user_name", cleanUName);
                     const hdrInput = document.getElementById("headerUserNameInput");
-                    if (hdrInput) hdrInput.value = u.user_name;
+                    if (hdrInput) hdrInput.value = cleanUName;
+                    try {
+                        const rawAcc = localStorage.getItem("edumate_current_account");
+                        const accObj = rawAcc ? JSON.parse(rawAcc) : {};
+                        accObj.id = currentUserId;
+                        accObj.name = cleanUName;
+                        accObj.role = currentUserRole;
+                        if (u.grade) accObj.grade = u.grade;
+                        localStorage.setItem("edumate_current_account", JSON.stringify(accObj));
+                    } catch(e) {}
                 }
                 currentManagedSubjects = Array.isArray(u.managed_subjects) ? u.managed_subjects : [];
                 currentManagedSubjectsKr = Array.isArray(u.managed_subjects_kr) ? u.managed_subjects_kr : [];
@@ -1158,6 +1168,10 @@
         }
 
         function updateUIWithUser(user) {
+            if (user && user.user_name) {
+                const hdrInput = document.getElementById("headerUserNameInput");
+                if (hdrInput) hdrInput.value = sanitizeUserName(user.user_name);
+            }
             const isMaster = (currentUserRole === "admin" || currentUserId === "master" || user.user_name === "마스터");
             const isSub = (currentUserRole === "sub_admin");
 
@@ -1610,21 +1624,21 @@
                     document.getElementById("editCurrentPw").value = "";
                     document.getElementById("editNewPw").value = "";
                     document.getElementById("editNewPwConfirm").value = "";
-                    const updatedName = data.user.user_name || newName;
+                    const updatedName = sanitizeUserName(data.user.user_name || newName);
                     if (updatedName) {
                         localStorage.setItem("edumate_math_user_name", updatedName);
                         const hdrInput = document.getElementById("headerUserNameInput");
                         if (hdrInput) hdrInput.value = updatedName;
 
-                        const curAccStr = localStorage.getItem("edumate_current_account");
-                        if (curAccStr) {
-                            try {
-                                const acc = JSON.parse(curAccStr);
-                                acc.name = updatedName;
-                                if (data.user.role) acc.role = data.user.role;
-                                localStorage.setItem("edumate_current_account", JSON.stringify(acc));
-                            } catch(e){}
-                        }
+                        try {
+                            const curAccStr = localStorage.getItem("edumate_current_account");
+                            const acc = curAccStr ? JSON.parse(curAccStr) : {};
+                            acc.id = currentUserId;
+                            acc.name = updatedName;
+                            if (data.user.role) acc.role = data.user.role;
+                            if (data.user.grade) acc.grade = data.user.grade;
+                            localStorage.setItem("edumate_current_account", JSON.stringify(acc));
+                        } catch(e){}
                     }
                     await loadUserProfile();
                 } else {

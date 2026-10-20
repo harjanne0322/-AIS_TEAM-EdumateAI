@@ -3429,7 +3429,6 @@
         // DB에서 학생 프로필(학년, 누적 총점, 포켓몬 속성, 부관리자 권한) 조회
         async function loadUserProfileFromDB() {
             const userName = getCurrentUserName();
-            localStorage.setItem("edumate_math_user_name", userName);
             try {
                 // 단순 조회(GET) 시에는 클라이언트 기본값으로 서버 DB를 덮어쓰지 않도록 파라미터 제외 (user_id 동반 전송으로 정확한 세션 조회)
                 const res = await fetch(`/math/user?user_name=${encodeURIComponent(userName)}&user_id=${encodeURIComponent(currentUserId || '')}`);
@@ -3440,9 +3439,18 @@
                         isLoggedIn = true;
                     }
                     if (data.user.user_name) {
+                        const cleanUName = sanitizeUserName(data.user.user_name);
                         const inputEl = document.getElementById("headerUserNameInput");
-                        if (inputEl) inputEl.value = data.user.user_name;
-                        localStorage.setItem("edumate_math_user_name", data.user.user_name);
+                        if (inputEl) inputEl.value = cleanUName;
+                        localStorage.setItem("edumate_math_user_name", cleanUName);
+                        try {
+                            const rawAcc = localStorage.getItem("edumate_current_account");
+                            const accObj = rawAcc ? JSON.parse(rawAcc) : {};
+                            accObj.id = currentUserId;
+                            accObj.name = cleanUName;
+                            if (data.user.role) accObj.role = data.user.role;
+                            localStorage.setItem("edumate_current_account", JSON.stringify(accObj));
+                        } catch(e) {}
                     }
                     if (data.user.role) {
                         currentUserRole = data.user.role;

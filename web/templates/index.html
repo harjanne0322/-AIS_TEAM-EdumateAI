@@ -686,6 +686,14 @@
                 const data = await res.json();
                 if (data.status === "success" && data.user) {
                     currentTotalScore = data.user.total_score ?? 0;
+                    if (data.user.user_name) {
+                        acc.name = sanitizeUserName(data.user.user_name);
+                        const hdrName = document.getElementById("headerUserName");
+                        if (hdrName) hdrName.value = acc.name;
+                        const welName = document.getElementById("lobbyWelcomeName");
+                        if (welName) welName.innerText = acc.name;
+                        localStorage.setItem("edumate_math_user_name", acc.name);
+                    }
                     if (data.user.grade) {
                         acc.grade = data.user.grade;
                     }
