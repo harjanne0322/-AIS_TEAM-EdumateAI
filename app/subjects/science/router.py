@@ -763,6 +763,46 @@ async def root_page():
     return FileResponse(str(html_file_path), media_type="text/html")
 
 
+@app.get("/mypage", response_class=HTMLResponse)
+@app.get("/profile", response_class=HTMLResponse)
+async def standalone_mypage():
+    # 단독 테스트 시 상위 폴더의 mypage.html 안전 탐색
+    for cand in [
+        current_dir.parent.parent / "web" / "templates" / "mypage.html",
+        current_dir.parent.parent.parent / "web" / "templates" / "mypage.html",
+        current_dir / "mypage.html"
+    ]:
+        if cand.exists():
+            return FileResponse(str(cand), media_type="text/html")
+    return HTMLResponse("<h3>[단독 테스트 안내] 메인 통합 서버(app.main:app) 구동 시 전과목 마이페이지(/mypage)로 연결됩니다.</h3>")
+
+
+@app.get("/{subj_code}", response_class=HTMLResponse)
+async def standalone_other_subject_notice(subj_code: str):
+    subj_map = {"math": "수학", "korean": "국어", "english": "영어", "social": "사회", "hanja": "한자"}
+    if subj_code in subj_map:
+        return HTMLResponse(
+            f"""<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>{subj_map[subj_code]} 이동 안내</title></head>
+<body style="font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; background:#f8fafc; margin:0;">
+  <div style="background:white; padding:32px 36px; border-radius:16px; border:1px solid #cbd5e1; text-align:center; max-width:440px; box-shadow:0 10px 25px rgba(0,0,0,0.06);">
+    <div style="font-size:44px; margin-bottom:12px;">📚</div>
+    <h2 style="font-size:20px; color:#1e293b; margin-bottom:8px;">[초등 {subj_map[subj_code]}] 과목 이동 안내</h2>
+    <p style="font-size:13.5px; color:#64748b; line-height:1.6; margin-bottom:24px;">
+      현재는 <strong>초등 과학 단독 테스트 모드</strong>로 구동 중입니다.<br>
+      팀 메인 통합 서버(<code>app.main:app</code>) 구동 시 전과목 자동 이동이 활성화됩니다.
+    </p>
+    <a href="/" style="display:inline-block; background:#0284c7; color:white; padding:10px 22px; border-radius:10px; font-weight:800; text-decoration:none; font-size:14px;">
+      🧪 초등 과학 학습관으로 돌아가기
+    </a>
+  </div>
+</body>
+</html>"""
+        )
+    raise HTTPException(status_code=404, detail="Not Found")
+
+
 @app.get("/logo.svg")
 async def root_logo():
     if logo_file_path.exists():

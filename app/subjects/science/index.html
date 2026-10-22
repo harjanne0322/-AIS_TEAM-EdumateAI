@@ -306,6 +306,48 @@
       transform: translateY(-1px);
     }
 
+    .btn-header-mypage {
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: #ffffff;
+      padding: 5px 13px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-header-mypage:hover {
+      background: rgba(255, 255, 255, 0.3);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .btn-header-logout {
+      background: #e11d48;
+      border: 1px solid #f43f5e;
+      color: #ffffff;
+      padding: 5px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+
+    .btn-header-logout:hover {
+      background: #be123c;
+      transform: translateY(-1px);
+    }
+
     .status-pill {
       font-size: 12.5px;
       font-weight: 800;
@@ -316,31 +358,136 @@
       border: 1px solid rgba(125, 211, 252, 0.3);
     }
 
-    /* 2단: 문제 풀이 방식 서브바 (Mode Level - 반응형 지원) */
+    /* ==============================================================================
+       2단: 전과목 이동 GNB 바 (과목 선택)
+       ============================================================================== */
+    .subject-nav-bar {
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 0 20px;
+    }
+
+    .subject-nav-inner {
+      max-width: 1360px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      min-height: 48px;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 4px 0;
+    }
+
+    .subject-nav-label {
+      font-size: 13px;
+      font-weight: 800;
+      color: #64748b;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .subject-nav-items {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .subject-nav-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #475569;
+      background: #ffffff;
+      border: 1.5px solid #cbd5e1;
+      text-decoration: none;
+      transition: all 0.18s;
+      white-space: nowrap;
+    }
+
+    .subject-nav-link:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+      border-color: #94a3b8;
+      transform: translateY(-1px);
+    }
+
+    .subject-nav-link.active {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #0284c7;
+      box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+    }
+
+    .current-badge {
+      font-size: 10px;
+      background: rgba(255, 255, 255, 0.25);
+      padding: 1px 6px;
+      border-radius: 9999px;
+      font-weight: 900;
+    }
+
+    /* ==============================================================================
+       3단: [과학 LNB] 초등 과학 세부 풀이 방식 로컬 네비게이션 바
+       ============================================================================== */
+    .science-lnb-bar,
     .mode-sub-bar {
       background: #ffffff;
       padding: 0 20px;
-      border-bottom: 1.5px solid #e0f2fe;
+      border-bottom: 2px solid #bae6fd;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
     }
 
+    .science-lnb-inner,
     .mode-sub-inner {
       max-width: 1360px;
       margin: 0 auto;
       display: flex;
       align-items: center;
-      min-height: 60px;
+      min-height: 56px;
       height: auto;
-      padding: 6px 0;
+      padding: 8px 0;
       gap: 12px;
       flex-wrap: wrap;
     }
 
-    .mode-sub-inner::-webkit-scrollbar {
-      display: none;
-    }
-
+    .science-lnb-title,
     .mode-sub-label {
       font-size: 13.5px;
+      font-weight: 900;
+      color: #0369a1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .lnb-indicator {
+      font-size: 15px;
+      font-weight: 900;
+      color: #0284c7;
+    }
+
+    .lnb-badge {
+      font-size: 11.5px;
+      font-weight: 900;
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1px solid #bae6fd;
+    }
+
+    .lnb-label {
+      font-size: 13px;
+      font-weight: 900;
+      color: #0284c7;
+    }
       font-weight: 900;
       color: #0369a1;
       display: flex;
@@ -1907,17 +2054,51 @@
           </div>
 
           <span class="status-pill" id="top-score-text">10문제 출제 모드</span>
+
+          <!-- 개인정보(마이페이지) 및 로그아웃 버튼 -->
+          <a href="/mypage" class="btn-header-mypage" onclick="navigateToMyPage(event)" title="개인정보 및 마이페이지로 이동">
+            <span>👤</span><span>마이페이지</span>
+          </a>
+          <button type="button" class="btn-header-logout" onclick="openLogoutModal()" title="로그아웃 후 메인 로비로 이동">
+            <span>🚪</span><span>로그아웃</span>
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="mode-sub-bar">
-      <div class="mode-sub-inner">
-        <div class="mode-sub-label">
-          <span class="dot"></span>
-          <span id="current-subject-label">[초등 과학]</span> 풀이 방식:
+    <!-- 2단: 전과목 이동 GNB 바 (과목 선택) -->
+    <div class="subject-nav-bar">
+      <div class="subject-nav-inner">
+        <span class="subject-nav-label">📚 과목 이동:</span>
+        <div class="subject-nav-items">
+          <a href="/math" class="subject-nav-link" title="초등 수학 학습관으로 이동">
+            <span>📐 수학</span>
+          </a>
+          <a href="/korean" class="subject-nav-link" title="초등 국어 학습관으로 이동">
+            <span>📖 국어</span>
+          </a>
+          <a href="/english" class="subject-nav-link" title="초등 영어 학습관으로 이동">
+            <span>🔤 영어</span>
+          </a>
+          <a href="/social" class="subject-nav-link" title="초등 사회 학습관으로 이동">
+            <span>🌏 사회</span>
+          </a>
+          <!-- 과학: 현재 과목 (Active) -->
+          <a href="/science" class="subject-nav-link active" title="현재 과목: 초등 과학">
+            <span>🧪 과학</span>
+            <span class="current-badge">학습중</span>
+          </a>
+          <a href="/hanja" class="subject-nav-link" title="초등 한자 학습관으로 이동">
+            <span>🀄 한자</span>
+          </a>
         </div>
+      </div>
+    </div>
 
+    <!-- 3단: [과학 LNB] 초등 과학 세부 풀이 방식 로컬 네비게이션 바 -->
+    <div class="science-lnb-bar mode-sub-bar">
+      <div class="science-lnb-inner mode-sub-inner">
+        <span id="current-subject-label" style="display: none;">[초등 과학]</span>
         <div class="mode-tabs-wrap">
           <button class="mode-menu-tab active" id="tab-ox" onclick="switchQuizMode('ox')">
             <span class="tab-icon">⭕❌</span>
@@ -2595,6 +2776,36 @@
     </div>
   </div>
 
+  <!-- [모달 5] 로그아웃 확인 커스텀 모달 -->
+  <div class="modal-overlay" id="logoutConfirmModal" onclick="closeLogoutModal(event)" style="display: none; z-index: 9999999;">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 440px; text-align: center; border: 2px solid #cbd5e1; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+      <div class="modal-header" style="background: #f8fafc; border-bottom: 1.5px solid #e2e8f0; padding: 16px 22px;">
+        <div class="modal-title" style="color: #0f172a; justify-content: center; width: 100%; font-size: 17px; font-weight: 900;">
+          <span>🚪</span>
+          <span>로그아웃 확인</span>
+        </div>
+        <button class="modal-close-btn" onclick="closeLogoutModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 26px 22px;">
+        <div style="font-size: 48px; margin-bottom: 12px;">👋</div>
+        <h3 style="font-size: 19px; font-weight: 900; color: #1e293b; margin-bottom: 8px;">
+          정말 로그아웃 하시겠습니까?
+        </h3>
+        <p style="font-size: 13.5px; color: #64748b; line-height: 1.6; margin-bottom: 24px;">
+          로그아웃 시 현재 학습 진행 상태가 안전하게 보관되고<br>에듀메이트 메인 로비 화면으로 이동합니다.
+        </p>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" onclick="closeLogoutModal()" style="flex: 1; background: #f1f5f9; color: #475569; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s;">
+            취소
+          </button>
+          <button type="button" onclick="executeLogout()" style="flex: 1; background: #e11d48; color: white; border: none; border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 900; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(225, 29, 72, 0.3);">
+            🚪 로그아웃
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ==========================================
     // 상태 관리 변수 (Step B 공통 계정 및 포켓몬 진화 체계 포함)
@@ -2725,6 +2936,72 @@
       }
 
       return null;
+    }
+
+    // ==========================================
+    // 마이페이지 이동 및 로그아웃 처리
+    // ==========================================
+    function navigateToMyPage(e) {
+      if (e) e.preventDefault();
+      const uName = getStoredUserName();
+      const uId = getStoredUserId();
+      let mypageUrl = "/mypage";
+      const params = [];
+      if (uName) params.push(`user_name=${encodeURIComponent(uName)}`);
+      if (uId) params.push(`user_id=${encodeURIComponent(uId)}`);
+      if (params.length > 0) {
+        mypageUrl += `?${params.join("&")}`;
+      }
+      window.location.href = mypageUrl;
+    }
+
+    // 커스텀 로그아웃 모달 제어
+    function openLogoutModal() {
+      const modal = document.getElementById("logoutConfirmModal");
+      if (modal) modal.style.display = "flex";
+    }
+
+    function closeLogoutModal(e) {
+      if (e && e.target && e.target !== e.currentTarget && !e.target.classList.contains("modal-close-btn")) return;
+      const modal = document.getElementById("logoutConfirmModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function executeLogout() {
+      const guestSessionId = localStorage.getItem("edumate_guest_session_id") || localStorage.getItem("edumate_math_user_id");
+      if (guestSessionId && (guestSessionId.startsWith("guest_") || guestSessionId === "guest")) {
+        try {
+          await fetch("/api/guest/clear", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ guest_id: guestSessionId })
+          });
+        } catch(e) {}
+      }
+
+      // 공통 및 과목별 세션 스토리지 완전 초기화
+      localStorage.removeItem("edumate_current_account");
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("edumate_user_id");
+      localStorage.removeItem("edumate_user_name");
+      localStorage.removeItem("userName");
+      localStorage.removeItem("user_name");
+      localStorage.removeItem("currentUserId");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("edumate_guest_session_id");
+      localStorage.removeItem("edumate_math_user_id");
+      localStorage.removeItem("edumate_math_user_name");
+      localStorage.removeItem("edumate_math_user_role");
+      localStorage.removeItem("edumate_pokemon_type");
+      localStorage.removeItem("edumate_custom_skin_stage");
+      sessionStorage.clear();
+
+      // 메인 로비 화면으로 이동
+      window.location.href = "/";
+    }
+
+    function handleHeaderLogout() {
+      openLogoutModal();
     }
 
     let currentAccount = getStoredUserName();
